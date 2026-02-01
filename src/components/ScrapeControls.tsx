@@ -17,6 +17,17 @@ interface ScrapeControlsProps {
   progress: ScrapeProgress;
 }
 
+// Format number with commas (e.g., 1234567 -> 1,234,567)
+const formatNumber = (num: number): string => {
+  return num.toLocaleString();
+};
+
+// Parse formatted string back to number
+const parseFormattedNumber = (str: string): number => {
+  const cleaned = str.replace(/,/g, '').replace(/[^0-9]/g, '');
+  return cleaned ? parseInt(cleaned, 10) : 0;
+};
+
 export function ScrapeControls({
   onScrape,
   onStop,
@@ -34,6 +45,20 @@ export function ScrapeControls({
     onScrape(startNumber, endNumber);
   };
 
+  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFormattedNumber(e.target.value);
+    if (value >= 0 && value <= 9999999) {
+      setStartNumber(value);
+    }
+  };
+
+  const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFormattedNumber(e.target.value);
+    if (value >= 0 && value <= 9999999) {
+      setEndNumber(value);
+    }
+  };
+
   const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
@@ -45,12 +70,11 @@ export function ScrapeControls({
           </Label>
           <Input
             id="start"
-            type="number"
-            min={1}
-            max={1000}
-            value={startNumber}
-            onChange={(e) => setStartNumber(Number(e.target.value))}
-            className="w-28 h-14 text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
+            type="text"
+            inputMode="numeric"
+            value={formatNumber(startNumber)}
+            onChange={handleStartChange}
+            className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
             disabled={isLoading}
           />
         </div>
@@ -63,12 +87,11 @@ export function ScrapeControls({
           </Label>
           <Input
             id="end"
-            type="number"
-            min={1}
-            max={1000}
-            value={endNumber}
-            onChange={(e) => setEndNumber(Number(e.target.value))}
-            className="w-28 h-14 text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
+            type="text"
+            inputMode="numeric"
+            value={formatNumber(endNumber)}
+            onChange={handleEndChange}
+            className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
             disabled={isLoading}
           />
         </div>
