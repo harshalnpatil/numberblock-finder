@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { numberblocksApi, NumberImage } from '@/lib/api/numberblocks';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,10 +28,14 @@ export function useNumberblocksScraper() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState<ScrapeProgress>({ current: 0, total: 0, phase: 'idle' });
   const { toast } = useToast();
+  
+  // Ref to track cancellation
+  const cancelledRef = useRef(false);
 
   const scrapeImages = useCallback(async (startNumber: number, endNumber: number) => {
     setIsLoading(true);
     setImages([]);
+    cancelledRef.current = false;
     
     const total = endNumber - startNumber + 1;
     setProgress({ current: 0, total, phase: 'scraping' });
@@ -41,9 +45,31 @@ export function useNumberblocksScraper() {
     
     try {
       for (let i = startNumber; i <= endNumber; i += batchSize) {
+        // Check if cancelled
+        if (cancelledRef.current) {
+          toast({
+            title: 'Scraping stopped',
+            description: `Stopped at ${allResults.length} images`,
+          });
+          break;
+        }
+        
         const batchEnd = Math.min(i + batchSize - 1, endNumber);
         
         const response = await numberblocksApi.scrapeImages(i, batchEnd);
+        
+        // Check again after async call
+        if (cancelledRef.current) {
+          if (response.success && response.data) {
+            allResults.push(...response.data);
+            setImages([...allResults]);
+          }
+          toast({
+            title: 'Scraping stopped',
+            description: `Stopped at ${allResults.length} images`,
+          });
+          break;
+        }
         
         if (response.success && response.data) {
           allResults.push(...response.data);
@@ -55,12 +81,13 @@ export function useNumberblocksScraper() {
         setProgress({ current: completed, total, phase: 'scraping' });
       }
       
-      const successCount = allResults.filter(img => img.imageUrl).length;
-      
-      toast({
-        title: 'Scraping complete!',
-        description: `Found ${successCount} of ${allResults.length} images`,
-      });
+      if (!cancelledRef.current) {
+        const successCount = allResults.filter(img => img.imageUrl).length;
+        toast({
+          title: 'Scraping complete!',
+          description: `Found ${successCount} of ${allResults.length} images`,
+        });
+      }
     } catch (error) {
       console.error('Scrape error:', error);
       toast({
@@ -73,6 +100,10 @@ export function useNumberblocksScraper() {
       setProgress({ current: 0, total: 0, phase: 'idle' });
     }
   }, [toast]);
+
+  const stopScraping = useCallback(() => {
+    cancelledRef.current = true;
+  }, []);
 
   const downloadAsZip = useCallback(async () => {
     const validImages = images.filter(img => img.imageUrl);
@@ -161,6 +192,7 @@ export function useNumberblocksScraper() {
     isDownloading,
     progress,
     scrapeImages,
+    stopScraping,
     downloadAsZip,
     hasImages: images.length > 0,
     successfulImageCount,

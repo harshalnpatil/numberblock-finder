@@ -9,6 +9,7 @@ const Index = () => {
     isDownloading,
     progress,
     scrapeImages,
+    stopScraping,
     downloadAsZip,
     hasImages,
     successfulImageCount,
@@ -29,6 +30,7 @@ const Index = () => {
         <div className="space-y-8">
           <ScrapeControls
             onScrape={scrapeImages}
+            onStop={stopScraping}
             onDownload={downloadAsZip}
             isLoading={isLoading}
             isDownloading={isDownloading}
