@@ -3,11 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Search, Download } from 'lucide-react';
+import { Loader2, Search, Download, Square } from 'lucide-react';
 import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
 
 interface ScrapeControlsProps {
   onScrape: (start: number, end: number) => Promise<void>;
+  onStop: () => void;
   onDownload: () => Promise<void>;
   isLoading: boolean;
   isDownloading: boolean;
@@ -18,6 +19,7 @@ interface ScrapeControlsProps {
 
 export function ScrapeControls({
   onScrape,
+  onStop,
   onDownload,
   isLoading,
   isDownloading,
@@ -63,23 +65,25 @@ export function ScrapeControls({
             disabled={isLoading}
           />
         </div>
-        <Button
-          onClick={handleScrape}
-          disabled={isLoading || startNumber > endNumber}
-          size="lg"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Scraping...
-            </>
-          ) : (
-            <>
-              <Search className="mr-2 h-4 w-4" />
-              Scrape Images
-            </>
-          )}
-        </Button>
+        {isLoading ? (
+          <Button
+            onClick={onStop}
+            variant="destructive"
+            size="lg"
+          >
+            <Square className="mr-2 h-4 w-4" />
+            Stop
+          </Button>
+        ) : (
+          <Button
+            onClick={handleScrape}
+            disabled={startNumber > endNumber}
+            size="lg"
+          >
+            <Search className="mr-2 h-4 w-4" />
+            Scrape Images
+          </Button>
+        )}
       </div>
 
       {isLoading && progress.total > 0 && (
