@@ -11,6 +11,7 @@ const Index = () => {
     scrapeImages,
     stopScraping,
     downloadAsZip,
+    updateImage,
     hasImages,
     successfulImageCount,
   } = useNumberblocksScraper();
@@ -40,7 +41,7 @@ const Index = () => {
             progress={progress}
           />
 
-          <ImageGallery images={images} />
+          <ImageGallery images={images} onImageUpdate={updateImage} />
         </div>
 
         <footer className="text-center mt-12 text-muted-foreground">
