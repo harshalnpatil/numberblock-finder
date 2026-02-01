@@ -84,15 +84,17 @@ export function useNumberblocksScraper() {
       if (!cancelledRef.current) {
         const successCount = allResults.filter(img => img.imageUrl).length;
         toast({
-          title: 'Scraping complete!',
-          description: `Found ${successCount} of ${allResults.length} images`,
+          title: 'Search complete!',
+          description: successCount > 0 
+            ? `Found ${successCount} picture${successCount > 1 ? 's' : ''}!` 
+            : 'No pictures found',
         });
       }
     } catch (error) {
       console.error('Scrape error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to scrape images. Please try again.',
+        description: 'Failed to find pictures. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -105,13 +107,13 @@ export function useNumberblocksScraper() {
     cancelledRef.current = true;
   }, []);
 
-  const downloadAsZip = useCallback(async () => {
+  const downloadImages = useCallback(async () => {
     const validImages = images.filter(img => img.imageUrl);
     
     if (validImages.length === 0) {
       toast({
         title: 'No images to download',
-        description: 'Scrape some images first!',
+        description: 'Find some pictures first!',
         variant: 'destructive',
       });
       return;
@@ -120,69 +122,112 @@ export function useNumberblocksScraper() {
     setIsDownloading(true);
 
     try {
-      const zip = new JSZip();
-      
-      // Fetch all images through proxy and add to ZIP
-      const fetchPromises = validImages.map(async (img) => {
-        try {
-          // Pad number for proper sorting (001, 010, 100)
-          const paddedNumber = img.number.toString().padStart(3, '0');
-          
-          // Use edge function to proxy the image (bypasses CORS/hotlink protection)
-          const { data, error } = await supabase.functions.invoke('proxy-image', {
-            body: { imageUrl: img.imageUrl },
-          });
-          
-          if (error || !data?.success) {
-            throw new Error(error?.message || data?.error || `Failed to fetch image ${img.number}`);
-          }
-          
-          const blob = base64ToBlob(data.data, data.contentType);
-          
-          // Determine file extension from content type
-          let extension = 'png';
-          if (data.contentType?.includes('jpeg') || data.contentType?.includes('jpg')) {
-            extension = 'jpg';
-          } else if (data.contentType?.includes('gif')) {
-            extension = 'gif';
-          } else if (data.contentType?.includes('webp')) {
-            extension = 'webp';
-          }
-          
-          zip.file(`${paddedNumber}.${extension}`, blob);
-          return true;
-        } catch (error) {
-          console.error(`Failed to fetch image ${img.number}:`, error);
-          return false;
+      // If only one image, download directly instead of as ZIP
+      if (validImages.length === 1) {
+        const img = validImages[0];
+        
+        // Use edge function to proxy the image
+        const { data, error } = await supabase.functions.invoke('proxy-image', {
+          body: { imageUrl: img.imageUrl },
+        });
+        
+        if (error || !data?.success) {
+          throw new Error(error?.message || data?.error || 'Failed to fetch image');
         }
-      });
+        
+        const blob = base64ToBlob(data.data, data.contentType);
+        
+        // Determine file extension from content type
+        let extension = 'png';
+        if (data.contentType?.includes('jpeg') || data.contentType?.includes('jpg')) {
+          extension = 'jpg';
+        } else if (data.contentType?.includes('gif')) {
+          extension = 'gif';
+        } else if (data.contentType?.includes('webp')) {
+          extension = 'webp';
+        }
+        
+        // Save directly as image file
+        saveAs(blob, `numberblock-${img.number}.${extension}`);
+        
+        toast({
+          title: 'Download complete!',
+          description: `Saved Numberblock ${img.number}!`,
+        });
+      } else {
+        // Multiple images: create ZIP
+        const zip = new JSZip();
+        
+        // Fetch all images through proxy and add to ZIP
+        const fetchPromises = validImages.map(async (img) => {
+          try {
+            // Pad number for proper sorting (001, 010, 100)
+            const paddedNumber = img.number.toString().padStart(3, '0');
+            
+            // Use edge function to proxy the image
+            const { data, error } = await supabase.functions.invoke('proxy-image', {
+              body: { imageUrl: img.imageUrl },
+            });
+            
+            if (error || !data?.success) {
+              throw new Error(error?.message || data?.error || `Failed to fetch image ${img.number}`);
+            }
+            
+            const blob = base64ToBlob(data.data, data.contentType);
+            
+            // Determine file extension from content type
+            let extension = 'png';
+            if (data.contentType?.includes('jpeg') || data.contentType?.includes('jpg')) {
+              extension = 'jpg';
+            } else if (data.contentType?.includes('gif')) {
+              extension = 'gif';
+            } else if (data.contentType?.includes('webp')) {
+              extension = 'webp';
+            }
+            
+            zip.file(`${paddedNumber}.${extension}`, blob);
+            return true;
+          } catch (error) {
+            console.error(`Failed to fetch image ${img.number}:`, error);
+            return false;
+          }
+        });
 
-      const results = await Promise.all(fetchPromises);
-      const successCount = results.filter(Boolean).length;
+        const results = await Promise.all(fetchPromises);
+        const successCount = results.filter(Boolean).length;
 
-      if (successCount === 0) {
-        throw new Error('Failed to download any images');
+        if (successCount === 0) {
+          throw new Error('Failed to download any images');
+        }
+
+        // Generate and download ZIP
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        saveAs(zipBlob, 'numberblocks-images.zip');
+
+        toast({
+          title: 'Download complete!',
+          description: `ZIP created with ${successCount} pictures!`,
+        });
       }
-
-      // Generate and download ZIP
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, 'numberblocks-images.zip');
-
-      toast({
-        title: 'Download complete!',
-        description: `ZIP created with ${successCount} images`,
-      });
     } catch (error) {
       console.error('Download error:', error);
       toast({
         title: 'Download failed',
-        description: error instanceof Error ? error.message : 'Failed to create ZIP',
+        description: error instanceof Error ? error.message : 'Failed to download',
         variant: 'destructive',
       });
     } finally {
       setIsDownloading(false);
     }
   }, [images, toast]);
+
+  const updateImage = useCallback((number: number, imageUrl: string) => {
+    setImages(prev => prev.map(img => 
+      img.number === number 
+        ? { ...img, imageUrl, aiGenerated: true, error: undefined } 
+        : img
+    ));
+  }, []);
 
   const successfulImageCount = images.filter(img => img.imageUrl).length;
 
@@ -193,7 +238,8 @@ export function useNumberblocksScraper() {
     progress,
     scrapeImages,
     stopScraping,
-    downloadAsZip,
+    downloadAsZip: downloadImages, // Keep the same name for backward compatibility
+    updateImage,
     hasImages: images.length > 0,
     successfulImageCount,
   };

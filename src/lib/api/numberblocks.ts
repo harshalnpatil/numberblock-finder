@@ -6,6 +6,7 @@ export interface NumberImage {
   pageUrl: string;
   cached?: boolean;
   error?: string;
+  aiGenerated?: boolean;
 }
 
 export interface ScrapeResponse {
@@ -14,10 +15,29 @@ export interface ScrapeResponse {
   data?: NumberImage[];
 }
 
+export interface GenerateResponse {
+  success: boolean;
+  error?: string;
+  imageUrl?: string;
+  aiGenerated?: boolean;
+}
+
 export const numberblocksApi = {
   async scrapeImages(startNumber: number = 1, endNumber: number = 20): Promise<ScrapeResponse> {
     const { data, error } = await supabase.functions.invoke('scrape-numberblocks', {
       body: { startNumber, endNumber },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    
+    return data;
+  },
+
+  async generateWithAI(number: number): Promise<GenerateResponse> {
+    const { data, error } = await supabase.functions.invoke('generate-numberblock', {
+      body: { number },
     });
 
     if (error) {
