@@ -14,7 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      numberblocks_cache: {
+        Row: {
+          created_at: string
+          id: string
+          number: number
+          original_url: string | null
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          number: number
+          original_url?: string | null
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          number?: number
+          original_url?: string | null
+          storage_path?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

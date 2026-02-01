@@ -4,6 +4,7 @@ export interface NumberImage {
   number: number;
   imageUrl: string | null;
   pageUrl: string;
+  cached?: boolean;
   error?: string;
 }
 
