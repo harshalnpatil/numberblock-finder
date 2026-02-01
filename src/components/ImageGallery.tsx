@@ -1,9 +1,88 @@
+import { useState, useEffect } from 'react';
 import { NumberImage } from '@/lib/api/numberblocks';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, ImageOff } from 'lucide-react';
+import { AlertCircle, ImageOff, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ImageGalleryProps {
   images: NumberImage[];
+}
+
+// Cache for proxied image URLs
+const imageCache = new Map<string, string>();
+
+function ProxiedImage({ imageUrl, number }: { imageUrl: string; number: number }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadImage() {
+      // Check cache first
+      if (imageCache.has(imageUrl)) {
+        setSrc(imageCache.get(imageUrl)!);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.functions.invoke('proxy-image', {
+          body: { imageUrl },
+        });
+
+        if (cancelled) return;
+
+        if (error || !data?.success) {
+          setError(true);
+          setLoading(false);
+          return;
+        }
+
+        // Create data URL from base64
+        const dataUrl = `data:${data.contentType};base64,${data.data}`;
+        imageCache.set(imageUrl, dataUrl);
+        setSrc(dataUrl);
+        setLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
+      }
+    }
+
+    loadImage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error || !src) {
+    return (
+      <div className="flex flex-col items-center gap-1 text-muted-foreground p-2">
+        <AlertCircle className="h-6 w-6 text-destructive" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={`Numberblock ${number}`}
+      className="w-full h-full object-contain"
+    />
+  );
 }
 
 export function ImageGallery({ images }: ImageGalleryProps) {
@@ -37,12 +116,7 @@ export function ImageGallery({ images }: ImageGalleryProps) {
           >
             <div className="aspect-square relative bg-muted flex items-center justify-center">
               {img.imageUrl ? (
-                <img
-                  src={img.imageUrl}
-                  alt={`Numberblock ${img.number}`}
-                  className="w-full h-full object-contain"
-                  loading="lazy"
-                />
+                <ProxiedImage imageUrl={img.imageUrl} number={img.number} />
               ) : (
                 <div className="flex flex-col items-center gap-1 text-muted-foreground p-2">
                   {img.error ? (
