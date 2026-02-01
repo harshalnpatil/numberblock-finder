@@ -254,47 +254,71 @@ function isValidCharacterImage(imageUrl: string): boolean {
 }
 
 function extractInfoboxImage(html: string, num: number): string | null {
-  // First, try to find the infobox image specifically
-  const infoboxPatterns = [
-    // Portable infobox image (most reliable)
-    /class="pi-image[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
-    // Image in aside infobox
-    /<aside[^>]*class="[^"]*infobox[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
-  ];
-
-  for (const pattern of infoboxPatterns) {
-    const match = html.match(pattern);
-    if (match && match[1]) {
-      let imageUrl = match[1];
-      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-      
-      if (isValidCharacterImage(imageUrl)) {
-        return imageUrl;
-      }
-    }
-  }
-
-  // Fallback: search for any image that looks like a character image
+  const numStr = num.toString();
   const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
-  const allImgMatches = html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi);
   
+  // First, try to find images that explicitly contain our number in the filename
+  // This is the most reliable method for large numbers
+  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
+  
+  // Priority 1: Look for images with the exact number in the URL
   for (const match of allImgMatches) {
     let imageUrl = match[1];
     
-    // Must be a valid character image
     if (!isValidCharacterImage(imageUrl)) {
       continue;
     }
     
-    // Clean up the URL
-    imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-    imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+    // Extract the filename from the URL
+    const urlPath = imageUrl.split('/').pop()?.split('?')[0] || '';
+    const urlLower = urlPath.toLowerCase();
     
-    // Check if filename matches the number name (case insensitive)
-    const urlLower = imageUrl.toLowerCase();
-    if (urlLower.includes(numberName) || urlLower.includes(num.toString())) {
+    // Check if the filename explicitly contains our number
+    // For large numbers like 2000000, the filename should contain "2000000" or "2,000,000"
+    const numWithCommas = num.toLocaleString();
+    if (urlLower.includes(numStr) || urlLower.includes(numWithCommas.replace(/,/g, ''))) {
+      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
       return imageUrl;
+    }
+  }
+  
+  // Priority 2: For small numbers, try the infobox patterns
+  if (num <= 1000) {
+    const infoboxPatterns = [
+      // Portable infobox image (most reliable)
+      /class="pi-image[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
+      // Image in aside infobox
+      /<aside[^>]*class="[^"]*infobox[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
+    ];
+
+    for (const pattern of infoboxPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        let imageUrl = match[1];
+        imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+        imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+        
+        if (isValidCharacterImage(imageUrl)) {
+          return imageUrl;
+        }
+      }
+    }
+    
+    // Priority 3: Fallback for small numbers - check if filename contains number word
+    for (const match of allImgMatches) {
+      let imageUrl = match[1];
+      
+      if (!isValidCharacterImage(imageUrl)) {
+        continue;
+      }
+      
+      const urlLower = imageUrl.toLowerCase();
+      if (urlLower.includes(numberName)) {
+        imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+        imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+        return imageUrl;
+      }
     }
   }
 
