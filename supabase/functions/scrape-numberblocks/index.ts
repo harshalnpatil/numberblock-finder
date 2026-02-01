@@ -218,25 +218,82 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
   }
 }
 
+function isValidCharacterImage(imageUrl: string): boolean {
+  // Reject common non-character images
+  const invalidPatterns = [
+    /placeholder/i,
+    /icon/i,
+    /favicon/i,
+    /logo/i,
+    /banner/i,
+    /Site-logo/i,
+    /Wiki-wordmark/i,
+    /Community-header/i,
+    /avatar/i,
+    /badge/i,
+    /button/i,
+    /sprite/i,
+    /Blocks_Universe/i,
+    /BLOCKS.*UNIVERSE/i,
+    /community/i,
+    /wiki.*wordmark/i,
+  ];
+  
+  for (const pattern of invalidPatterns) {
+    if (pattern.test(imageUrl)) {
+      return false;
+    }
+  }
+  
+  // Must be from the numberblocks static content
+  if (!imageUrl.includes('static.wikia.nocookie.net/numberblocks/images')) {
+    return false;
+  }
+  
+  return true;
+}
+
 function extractInfoboxImage(html: string, num: number): string | null {
-  const patterns = [
-    /class="pi-image"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
-    /class="image image-thumbnail"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
-    new RegExp(`<img[^>]*src="([^"]+${numberToWord(num)}[^"]*\\.png)"[^>]*>`, 'i'),
-    /<img[^>]*src="(https:\/\/static\.wikia\.nocookie\.net\/numberblocks[^"]+)"[^>]*>/i,
+  // First, try to find the infobox image specifically
+  const infoboxPatterns = [
+    // Portable infobox image (most reliable)
+    /class="pi-image[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
+    // Image in aside infobox
+    /<aside[^>]*class="[^"]*infobox[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of infoboxPatterns) {
     const match = html.match(pattern);
     if (match && match[1]) {
       let imageUrl = match[1];
       imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
       imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
       
-      if (imageUrl.includes('placeholder') || imageUrl.includes('icon') || imageUrl.includes('favicon')) {
-        continue;
+      if (isValidCharacterImage(imageUrl)) {
+        return imageUrl;
       }
-      
+    }
+  }
+
+  // Fallback: search for any image that looks like a character image
+  const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
+  const allImgMatches = html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi);
+  
+  for (const match of allImgMatches) {
+    let imageUrl = match[1];
+    
+    // Must be a valid character image
+    if (!isValidCharacterImage(imageUrl)) {
+      continue;
+    }
+    
+    // Clean up the URL
+    imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+    imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+    
+    // Check if filename matches the number name (case insensitive)
+    const urlLower = imageUrl.toLowerCase();
+    if (urlLower.includes(numberName) || urlLower.includes(num.toString())) {
       return imageUrl;
     }
   }
