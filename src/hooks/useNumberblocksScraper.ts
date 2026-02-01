@@ -1,8 +1,20 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { numberblocksApi, NumberImage } from '@/lib/api/numberblocks';
+import { supabase } from '@/integrations/supabase/client';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+
+// Helper to convert base64 to blob
+function base64ToBlob(base64: string, contentType: string): Blob {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType });
+}
 
 export function useNumberblocksScraper() {
   const [images, setImages] = useState<NumberImage[]>([]);
@@ -60,25 +72,30 @@ export function useNumberblocksScraper() {
     try {
       const zip = new JSZip();
       
-      // Fetch all images and add to ZIP
+      // Fetch all images through proxy and add to ZIP
       const fetchPromises = validImages.map(async (img) => {
         try {
           // Pad number for proper sorting (001, 010, 100)
           const paddedNumber = img.number.toString().padStart(3, '0');
           
-          const response = await fetch(img.imageUrl!);
-          if (!response.ok) throw new Error(`Failed to fetch image ${img.number}`);
+          // Use edge function to proxy the image (bypasses CORS/hotlink protection)
+          const { data, error } = await supabase.functions.invoke('proxy-image', {
+            body: { imageUrl: img.imageUrl },
+          });
           
-          const blob = await response.blob();
+          if (error || !data?.success) {
+            throw new Error(error?.message || data?.error || `Failed to fetch image ${img.number}`);
+          }
           
-          // Determine file extension from content type or URL
+          const blob = base64ToBlob(data.data, data.contentType);
+          
+          // Determine file extension from content type
           let extension = 'png';
-          const contentType = response.headers.get('content-type');
-          if (contentType?.includes('jpeg') || contentType?.includes('jpg')) {
+          if (data.contentType?.includes('jpeg') || data.contentType?.includes('jpg')) {
             extension = 'jpg';
-          } else if (contentType?.includes('gif')) {
+          } else if (data.contentType?.includes('gif')) {
             extension = 'gif';
-          } else if (contentType?.includes('webp')) {
+          } else if (data.contentType?.includes('webp')) {
             extension = 'webp';
           }
           
