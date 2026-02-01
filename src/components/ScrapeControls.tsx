@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Loader2, Search, Download } from 'lucide-react';
+import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
 
 interface ScrapeControlsProps {
   onScrape: (start: number, end: number) => Promise<void>;
@@ -11,6 +13,7 @@ interface ScrapeControlsProps {
   isDownloading: boolean;
   hasImages: boolean;
   imageCount: number;
+  progress: ScrapeProgress;
 }
 
 export function ScrapeControls({
@@ -20,6 +23,7 @@ export function ScrapeControls({
   isDownloading,
   hasImages,
   imageCount,
+  progress,
 }: ScrapeControlsProps) {
   const [startNumber, setStartNumber] = useState(1);
   const [endNumber, setEndNumber] = useState(20);
@@ -27,6 +31,8 @@ export function ScrapeControls({
   const handleScrape = () => {
     onScrape(startNumber, endNumber);
   };
+
+  const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
     <div className="space-y-4">
@@ -76,7 +82,17 @@ export function ScrapeControls({
         </Button>
       </div>
 
-      {hasImages && (
+      {isLoading && progress.total > 0 && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Scraping images...</span>
+            <span>{progress.current} / {progress.total}</span>
+          </div>
+          <Progress value={progressPercent} className="h-2" />
+        </div>
+      )}
+
+      {hasImages && !isLoading && (
         <Button
           onClick={onDownload}
           disabled={isDownloading || imageCount === 0}
