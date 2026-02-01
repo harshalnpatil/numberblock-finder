@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Search, Download, Square } from 'lucide-react';
+import { Loader2, Search, Download, Square, Sparkles } from 'lucide-react';
 import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
 
 interface ScrapeControlsProps {
@@ -37,10 +37,12 @@ export function ScrapeControls({
   const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-4 items-end">
-        <div className="space-y-2">
-          <Label htmlFor="start">Start Number</Label>
+    <div className="space-y-6 bg-card p-6 sm:p-8 rounded-3xl shadow-lg border-4 border-primary/20">
+      <div className="flex flex-wrap gap-6 items-end justify-center">
+        <div className="space-y-3">
+          <Label htmlFor="start" className="text-lg font-semibold flex items-center gap-2">
+            <span className="text-2xl">1️⃣</span> From Number
+          </Label>
           <Input
             id="start"
             type="number"
@@ -48,12 +50,17 @@ export function ScrapeControls({
             max={1000}
             value={startNumber}
             onChange={(e) => setStartNumber(Number(e.target.value))}
-            className="w-24"
+            className="w-28 h-14 text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
             disabled={isLoading}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="end">End Number</Label>
+        
+        <div className="text-4xl font-bold text-primary hidden sm:block">➡️</div>
+        
+        <div className="space-y-3">
+          <Label htmlFor="end" className="text-lg font-semibold flex items-center gap-2">
+            <span className="text-2xl">🔢</span> To Number
+          </Label>
           <Input
             id="end"
             type="number"
@@ -61,38 +68,44 @@ export function ScrapeControls({
             max={1000}
             value={endNumber}
             onChange={(e) => setEndNumber(Number(e.target.value))}
-            className="w-24"
+            className="w-28 h-14 text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
             disabled={isLoading}
           />
         </div>
+        
         {isLoading ? (
           <Button
             onClick={onStop}
             variant="destructive"
-            size="lg"
+            className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg"
           >
-            <Square className="mr-2 h-4 w-4" />
-            Stop
+            <Square className="mr-2 h-6 w-6" />
+            Stop! 🛑
           </Button>
         ) : (
           <Button
             onClick={handleScrape}
             disabled={startNumber > endNumber}
-            size="lg"
+            className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-primary hover:bg-primary/90"
           >
-            <Search className="mr-2 h-4 w-4" />
-            Scrape Images
+            <Sparkles className="mr-2 h-6 w-6" />
+            Find Pictures! ✨
           </Button>
         )}
       </div>
 
       {isLoading && progress.total > 0 && (
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Scraping images...</span>
-            <span>{progress.current} / {progress.total}</span>
+        <div className="space-y-3 bg-muted/50 p-4 rounded-2xl">
+          <div className="flex justify-between text-lg font-semibold">
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Looking for Numberblocks... 🔍
+            </span>
+            <span className="text-primary text-xl font-bold">
+              {progress.current} / {progress.total}
+            </span>
           </div>
-          <Progress value={progressPercent} className="h-2" />
+          <Progress value={progressPercent} className="h-4 rounded-full" />
         </div>
       )}
 
@@ -100,19 +113,17 @@ export function ScrapeControls({
         <Button
           onClick={onDownload}
           disabled={isDownloading || imageCount === 0}
-          variant="secondary"
-          size="lg"
-          className="w-full sm:w-auto"
+          className="w-full h-16 text-xl font-bold rounded-2xl fun-button shadow-lg bg-secondary hover:bg-secondary/90"
         >
           {isDownloading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Creating ZIP...
+              <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+              Making your ZIP file... 📦
             </>
           ) : (
             <>
-              <Download className="mr-2 h-4 w-4" />
-              Download All as ZIP ({imageCount} images)
+              <Download className="mr-3 h-6 w-6" />
+              Download All Pictures! 🎉 ({imageCount} pics)
             </>
           )}
         </Button>

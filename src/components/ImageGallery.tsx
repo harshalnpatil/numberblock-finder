@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NumberImage } from '@/lib/api/numberblocks';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, ImageOff, Loader2, Database } from 'lucide-react';
+import { AlertCircle, ImageOff, Loader2, Database, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ImageGalleryProps {
@@ -75,15 +75,16 @@ function ProxiedImage({ imageUrl, number, cached }: { imageUrl: string; number: 
   if (loading) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (error || !src) {
     return (
-      <div className="flex flex-col items-center gap-1 text-muted-foreground p-2">
-        <AlertCircle className="h-6 w-6 text-destructive" />
+      <div className="flex flex-col items-center gap-2 text-muted-foreground p-4">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <span className="text-sm">Oops!</span>
       </div>
     );
   }
@@ -92,7 +93,7 @@ function ProxiedImage({ imageUrl, number, cached }: { imageUrl: string; number: 
     <img
       src={src}
       alt={`Numberblock ${number}`}
-      className="w-full h-full object-contain"
+      className="w-full h-full object-contain p-2"
     />
   );
 }
@@ -100,8 +101,14 @@ function ProxiedImage({ imageUrl, number, cached }: { imageUrl: string; number: 
 export function ImageGallery({ images }: ImageGalleryProps) {
   if (images.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>No images scraped yet. Click "Scrape Images" to get started!</p>
+      <div className="text-center py-16">
+        <div className="text-6xl mb-4">🔢</div>
+        <p className="text-xl font-semibold text-muted-foreground">
+          No pictures yet!
+        </p>
+        <p className="text-lg text-muted-foreground mt-2">
+          Click "Find Pictures" to start! ✨
+        </p>
       </div>
     );
   }
@@ -112,44 +119,56 @@ export function ImageGallery({ images }: ImageGalleryProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>Found {successfulImages.length} of {images.length} images</span>
+      <div className="flex flex-wrap items-center justify-center gap-4 text-lg font-semibold bg-card p-4 rounded-2xl shadow-md">
+        <span className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          Found {successfulImages.length} of {images.length} pictures! 🎉
+        </span>
         <div className="flex gap-4">
           {cachedImages.length > 0 && (
-            <span className="flex items-center gap-1 text-primary">
-              <Database className="h-3 w-3" />
-              {cachedImages.length} cached
+            <span className="flex items-center gap-2 text-primary bg-primary/10 px-3 py-1 rounded-full">
+              <Database className="h-4 w-4" />
+              {cachedImages.length} saved ⚡
             </span>
           )}
           {failedImages.length > 0 && (
-            <span className="text-destructive">
-              {failedImages.length} failed
+            <span className="text-destructive bg-destructive/10 px-3 py-1 rounded-full">
+              {failedImages.length} missing 😢
             </span>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {images.map((img) => (
           <Card 
             key={img.number} 
-            className={`overflow-hidden ${!img.imageUrl ? 'border-destructive/50' : ''} ${img.cached ? 'ring-1 ring-primary/20' : ''}`}
+            className={`overflow-hidden rounded-3xl border-4 transition-all hover:scale-105 hover:shadow-xl cursor-pointer
+              ${!img.imageUrl ? 'border-destructive/30 bg-destructive/5' : 'border-primary/20 hover:border-primary/50'}
+              ${img.cached ? 'ring-2 ring-primary/30' : ''}
+            `}
           >
-            <div className="aspect-square relative bg-muted flex items-center justify-center">
+            <div className="aspect-square relative bg-gradient-to-br from-muted/50 to-muted flex items-center justify-center">
               {img.imageUrl ? (
                 <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} />
               ) : (
-                <div className="flex flex-col items-center gap-1 text-muted-foreground p-2">
+                <div className="flex flex-col items-center gap-2 text-muted-foreground p-4">
                   {img.error ? (
-                    <AlertCircle className="h-6 w-6 text-destructive" />
+                    <>
+                      <AlertCircle className="h-10 w-10 text-destructive" />
+                      <span className="text-sm">Oops!</span>
+                    </>
                   ) : (
-                    <ImageOff className="h-6 w-6" />
+                    <>
+                      <ImageOff className="h-10 w-10" />
+                      <span className="text-sm">Not found</span>
+                    </>
                   )}
                 </div>
               )}
             </div>
-            <div className="p-2 text-center">
-              <span className="font-bold text-lg">{img.number}</span>
+            <div className="p-3 text-center bg-gradient-to-t from-primary/10 to-transparent">
+              <span className="font-bold text-2xl text-primary">{img.number}</span>
             </div>
           </Card>
         ))}

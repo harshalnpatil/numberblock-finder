@@ -16,14 +16,15 @@ const Index = () => {
   } = useNumberblocksScraper();
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <header className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-2">
-            Numberblocks Image Scraper
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        <header className="text-center mb-10">
+          <div className="text-6xl mb-4 animate-bounce-gentle">🔢</div>
+          <h1 className="text-4xl sm:text-5xl font-bold mb-3 rainbow-text">
+            Numberblocks Finder!
           </h1>
-          <p className="text-muted-foreground">
-            Scrape character images from the Numberblocks wiki and download as a ZIP
+          <p className="text-xl font-medium text-muted-foreground">
+            Find your favorite Numberblocks pictures! 🌈
           </p>
         </header>
 
@@ -41,6 +42,10 @@ const Index = () => {
 
           <ImageGallery images={images} />
         </div>
+
+        <footer className="text-center mt-12 text-muted-foreground">
+          <p className="text-lg">Made with 💜 for little number fans!</p>
+        </footer>
       </div>
     </div>
   );
