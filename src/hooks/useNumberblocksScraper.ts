@@ -16,33 +16,51 @@ function base64ToBlob(base64: string, contentType: string): Blob {
   return new Blob([byteArray], { type: contentType });
 }
 
+export interface ScrapeProgress {
+  current: number;
+  total: number;
+  phase: 'scraping' | 'idle';
+}
+
 export function useNumberblocksScraper() {
   const [images, setImages] = useState<NumberImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [progress, setProgress] = useState<ScrapeProgress>({ current: 0, total: 0, phase: 'idle' });
   const { toast } = useToast();
 
   const scrapeImages = useCallback(async (startNumber: number, endNumber: number) => {
     setIsLoading(true);
+    setImages([]);
+    
+    const total = endNumber - startNumber + 1;
+    setProgress({ current: 0, total, phase: 'scraping' });
+    
+    const allResults: NumberImage[] = [];
+    const batchSize = 5; // Process 5 at a time for progress updates
     
     try {
-      const response = await numberblocksApi.scrapeImages(startNumber, endNumber);
-      
-      if (response.success && response.data) {
-        setImages(response.data);
-        const successCount = response.data.filter(img => img.imageUrl).length;
+      for (let i = startNumber; i <= endNumber; i += batchSize) {
+        const batchEnd = Math.min(i + batchSize - 1, endNumber);
         
-        toast({
-          title: 'Scraping complete!',
-          description: `Found ${successCount} of ${response.data.length} images`,
-        });
-      } else {
-        toast({
-          title: 'Scraping failed',
-          description: response.error || 'Unknown error occurred',
-          variant: 'destructive',
-        });
+        const response = await numberblocksApi.scrapeImages(i, batchEnd);
+        
+        if (response.success && response.data) {
+          allResults.push(...response.data);
+          setImages([...allResults]);
+        }
+        
+        // Update progress
+        const completed = Math.min(batchEnd - startNumber + 1, total);
+        setProgress({ current: completed, total, phase: 'scraping' });
       }
+      
+      const successCount = allResults.filter(img => img.imageUrl).length;
+      
+      toast({
+        title: 'Scraping complete!',
+        description: `Found ${successCount} of ${allResults.length} images`,
+      });
     } catch (error) {
       console.error('Scrape error:', error);
       toast({
@@ -52,6 +70,7 @@ export function useNumberblocksScraper() {
       });
     } finally {
       setIsLoading(false);
+      setProgress({ current: 0, total: 0, phase: 'idle' });
     }
   }, [toast]);
 
@@ -140,6 +159,7 @@ export function useNumberblocksScraper() {
     images,
     isLoading,
     isDownloading,
+    progress,
     scrapeImages,
     downloadAsZip,
     hasImages: images.length > 0,

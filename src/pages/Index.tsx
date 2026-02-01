@@ -7,6 +7,7 @@ const Index = () => {
     images,
     isLoading,
     isDownloading,
+    progress,
     scrapeImages,
     downloadAsZip,
     hasImages,
@@ -33,6 +34,7 @@ const Index = () => {
             isDownloading={isDownloading}
             hasImages={hasImages}
             imageCount={successfulImageCount}
+            progress={progress}
           />
 
           <ImageGallery images={images} />
