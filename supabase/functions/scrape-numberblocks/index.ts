@@ -18,6 +18,94 @@ interface CacheEntry {
   storage_path: string;
 }
 
+// Rate limit configuration
+const RATE_LIMITS = {
+  perIp: {
+    threshold: 20,      // Max API calls per IP
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    delayPerExcess: 10000,   // 10 seconds per call over limit
+  },
+  global: {
+    threshold: 100,     // Max API calls globally
+    windowMs: 60 * 1000,    // 1 minute
+    delayPerExcess: 5000,    // 5 seconds per call over limit
+  },
+  maxDelay: 60000, // Cap at 60 seconds
+};
+
+function getClientIP(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
+    || req.headers.get('cf-connecting-ip') 
+    || req.headers.get('x-real-ip')
+    || 'unknown';
+}
+
+async function checkRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number }> {
+  const now = new Date();
+  
+  // Check per-IP limit (last 5 minutes)
+  const ipWindowStart = new Date(now.getTime() - RATE_LIMITS.perIp.windowMs);
+  const { data: ipCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('ip_address', ip)
+    .gte('created_at', ipWindowStart.toISOString());
+  
+  const ipTotal = ipCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+  
+  // Check global limit (last 1 minute)  
+  const globalWindowStart = new Date(now.getTime() - RATE_LIMITS.global.windowMs);
+  const { data: globalCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .gte('created_at', globalWindowStart.toISOString());
+  
+  const globalTotal = globalCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+  
+  // Calculate delay
+  let delay = 0;
+  if (ipTotal > RATE_LIMITS.perIp.threshold) {
+    delay += (ipTotal - RATE_LIMITS.perIp.threshold) * RATE_LIMITS.perIp.delayPerExcess;
+  }
+  if (globalTotal > RATE_LIMITS.global.threshold) {
+    delay += (globalTotal - RATE_LIMITS.global.threshold) * RATE_LIMITS.global.delayPerExcess;
+  }
+  
+  return { 
+    delay: Math.min(delay, RATE_LIMITS.maxDelay),
+    ipTotal,
+    globalTotal
+  };
+}
+
+async function logApiCalls(supabase: any, ip: string, count: number, endpoint: string = 'scrape-numberblocks'): Promise<void> {
+  if (count <= 0) return;
+  
+  const { error } = await supabase.from('rate_limit_log').insert({
+    ip_address: ip,
+    endpoint,
+    api_calls_count: count,
+  });
+  
+  if (error) {
+    console.error('Failed to log API calls:', error);
+  }
+}
+
+async function cleanupOldRateLimitLogs(supabase: any): Promise<void> {
+  // Delete entries older than 1 hour
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  const { error } = await supabase
+    .from('rate_limit_log')
+    .delete()
+    .lt('created_at', oneHourAgo.toISOString());
+  
+  if (error) {
+    console.error('Failed to cleanup old rate limit logs:', error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -37,9 +125,10 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const clientIP = getClientIP(req);
     const { startNumber = 1, endNumber = 20 } = await req.json();
     
-    console.log(`Processing Numberblocks images from ${startNumber} to ${endNumber}`);
+    console.log(`Processing Numberblocks images from ${startNumber} to ${endNumber} (IP: ${clientIP})`);
     
     // Check which numbers are already cached
     const { data: cachedEntries } = await supabase
@@ -80,19 +169,47 @@ Deno.serve(async (req) => {
     }
     
     console.log(`Need to scrape ${numbersToScrape.length} new images`);
+
+    let wasThrottled = false;
+    let appliedDelay = 0;
     
-    // Scrape uncached numbers in batches
-    const batchSize = 5;
-    for (let i = 0; i < numbersToScrape.length; i += batchSize) {
-      const batch = numbersToScrape.slice(i, i + batchSize);
-      const batchPromises = batch.map(num => scrapeAndCacheNumber(num, apiKey, supabase, supabaseUrl));
+    // Only check rate limits if we need to make API calls
+    if (numbersToScrape.length > 0) {
+      const { delay, ipTotal, globalTotal } = await checkRateLimits(supabase, clientIP);
       
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
+      if (delay > 0) {
+        wasThrottled = true;
+        appliedDelay = delay;
+        console.log(`Rate limiting: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+        
+        // Apply the delay - this slows down the response instead of blocking
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
       
-      // Small delay between batches
-      if (i + batchSize < numbersToScrape.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // Scrape uncached numbers in batches
+      const batchSize = 5;
+      let apiCallsCount = 0;
+      
+      for (let i = 0; i < numbersToScrape.length; i += batchSize) {
+        const batch = numbersToScrape.slice(i, i + batchSize);
+        const batchPromises = batch.map(num => scrapeAndCacheNumber(num, apiKey, supabase, supabaseUrl));
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        apiCallsCount += batch.length;
+        
+        // Small delay between batches
+        if (i + batchSize < numbersToScrape.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // Log the API calls for rate limiting
+      await logApiCalls(supabase, clientIP, apiCallsCount);
+      
+      // Occasionally cleanup old logs (1% chance per request)
+      if (Math.random() < 0.01) {
+        cleanupOldRateLimitLogs(supabase).catch(console.error);
       }
     }
     
@@ -103,9 +220,22 @@ Deno.serve(async (req) => {
     const cachedCount = results.filter(r => r.cached).length;
     console.log(`Returning ${results.length} images (${cachedCount} cached, ${successCount - cachedCount} newly scraped)`);
 
+    // Include throttle info in response headers
+    const responseHeaders = { 
+      ...corsHeaders, 
+      'Content-Type': 'application/json',
+      'X-Rate-Limited': wasThrottled ? 'true' : 'false',
+      'X-Rate-Limit-Delay': appliedDelay.toString(),
+    };
+
     return new Response(
-      JSON.stringify({ success: true, data: results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        success: true, 
+        data: results,
+        rateLimited: wasThrottled,
+        delayApplied: appliedDelay,
+      }),
+      { headers: responseHeaders }
     );
   } catch (error) {
     console.error('Error:', error);
