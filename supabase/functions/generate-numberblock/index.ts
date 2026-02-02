@@ -36,11 +36,25 @@ Deno.serve(async (req) => {
 
     // Create a kid-friendly prompt for generating a Numberblocks-style coloring page
     const numberWord = numberToWord(number);
-    const prompt = `Create a simple, kid-friendly coloring page sketch of a Numberblocks character representing the number ${number} (${numberWord}). 
-The character should be made of ${number} stacked blocks arranged in a friendly, blocky figure with cute eyes and a smile. 
-Make it a black and white line drawing suitable for children to color in. 
-The style should be simple, cute, and cartoon-like, similar to the BBC Numberblocks show.
-Include the number "${number.toLocaleString()}" displayed somewhere on or near the character.
+    const structureGuide = getStructureGuide(number);
+    
+    const prompt = `Create a simple, kid-friendly coloring page sketch of a Numberblocks character representing the number ${number} (${numberWord}).
+
+CRITICAL STRUCTURE RULES - One block always equals one unit:
+${structureGuide}
+
+CHARACTER DESIGN:
+- Single friendly face on the FRONT of the structure, centered and readable
+- Simple stick arms and legs that scale proportionally but stay thin
+- Cute cartoon eyes and a warm smile
+- One solid body color (shown as outline for coloring)
+
+STYLE:
+- Black and white line drawing suitable for children to color
+- Simple, cute, cartoon-like, similar to BBC Numberblocks show
+- Clean outlines, no shading
+- Include the number "${number.toLocaleString()}" displayed clearly near the character
+
 Ultra high resolution coloring page illustration.`;
 
     // Call Lovable AI Gateway for image generation
@@ -210,4 +224,98 @@ function numberToWord(num: number): string {
   }
   
   return num.toLocaleString();
+}
+
+// Returns structural guidance based on the number's scale
+function getStructureGuide(num: number): string {
+  if (num <= 9) {
+    // Small numbers: show every cube
+    return `- Build as a simple stack or rectangle of exactly ${num} visible, countable cubes
+- Each individual cube should be clearly visible and countable
+- Arrange in a compact shape (e.g., ${getSmallNumberArrangement(num)})
+- The child should be able to count every single block`;
+  }
+  
+  if (num === 10) {
+    // Ten: first grouped unit
+    return `- Show as a clean rectangle of 10 blocks (2 columns of 5, or 1 row of 10)
+- Ten is the first "grouped unit" - make it look like a building block itself
+- All 10 cubes should be visible but arranged as a unified shape`;
+  }
+  
+  if (num <= 99) {
+    // Two-digit: tens + ones
+    const tens = Math.floor(num / 10);
+    const ones = num % 10;
+    const onesText = ones > 0 ? ` with ${ones} extra single block${ones > 1 ? 's' : ''} attached on the side or top` : '';
+    return `- Build from ${tens} groups of ten${onesText}
+- The tens form the main rectangular body
+- Extra ones attach clearly and separately
+- The viewer should "see" addition: ${tens}×10 + ${ones} = ${num}
+- All blocks should still be individually visible`;
+  }
+  
+  if (num === 100) {
+    // Hundred: grid structure
+    return `- Show as a large 10×10 square grid (100 blocks total)
+- This is the first number where counting is impractical
+- The structure should signal "hundred" through its grid pattern
+- Individual cubes can be implied but the 10×10 structure must be clear`;
+  }
+  
+  if (num <= 999) {
+    // Hundreds: multiple slabs
+    const hundreds = Math.floor(num / 100);
+    const remainder = num % 100;
+    const remainderText = remainder > 0 ? ` plus visible extra blocks for the remaining ${remainder}` : '';
+    return `- Show as ${hundreds} stacked or side-by-side 10×10 hundred-slabs${remainderText}
+- Each hundred-slab keeps its 10×10 identity
+- Structure is architectural - the count is implied by the pattern
+- Think of it as ${hundreds} "hundred-blocks" combined`;
+  }
+  
+  if (num <= 9999) {
+    // Thousands: stacked hundreds
+    const thousands = Math.floor(num / 1000);
+    const remainder = num % 1000;
+    return `- Conceptualize as ${thousands} "thousand-blocks" (each is a cube of 10 hundred-slabs)
+- Individual cubes cannot all be drawn - use structural representation
+- Show the magnitude through HEIGHT and SCALE, not individual blocks
+- ${remainder > 0 ? `Include visual indication of the extra ${remainder}` : 'Clean thousand-block structure'}
+- Use mega-blocks arranged in clean grids and balanced rectangles`;
+  }
+  
+  if (num <= 999999) {
+    // Ten-thousands to hundreds of thousands
+    const mainUnit = Math.floor(num / 1000);
+    return `- SYMBOLIC STRUCTURE: Impossible to show every cube
+- Represent as ${mainUnit.toLocaleString()} thousand-blocks in a massive grid/tower
+- Use repeating patterns of known shapes (tens, hundreds) to signal scale
+- WIDTH and HEIGHT show magnitude, not literal cube count
+- Think architectural monument, not countable blocks
+- Clear visual hierarchy: the number is understood by STRUCTURE, not detail`;
+  }
+  
+  // Million+
+  return `- PURE STRUCTURE AND SCALE representation
+- Show as a monumental tower or massive cube made of implied thousand-layers
+- Individual blocks are completely abstracted into mega-structures
+- Use labels, perspective, and sheer size to convey magnitude
+- The character should feel MASSIVE and architectural
+- Think skyscraper or mountain-sized, with structure implying the count`;
+}
+
+function getSmallNumberArrangement(num: number): string {
+  switch (num) {
+    case 1: return '1 single cube';
+    case 2: return '2 cubes stacked vertically or side-by-side';
+    case 3: return '3 cubes in a triangle or row';
+    case 4: return '2×2 square';
+    case 5: return '5 cubes in a plus shape or row';
+    case 6: return '2×3 rectangle';
+    case 7: return '2×3 + 1 on top';
+    case 8: return '2×4 rectangle or 2×2×2 cube';
+    case 9: return '3×3 square';
+    default: return `${num} cubes arranged compactly`;
+  }
 }
