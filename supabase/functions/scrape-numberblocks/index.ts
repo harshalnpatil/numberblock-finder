@@ -126,7 +126,53 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
-    const { startNumber = 1, endNumber = 20 } = await req.json();
+    const body = await req.json();
+    const startNumber = body.startNumber ?? 1;
+    const endNumber = body.endNumber ?? 20;
+
+    // Input validation
+    const MAX_RANGE = 50;
+    
+    // Check if values are valid numbers (not letters or other types)
+    if (typeof startNumber !== 'number' || typeof endNumber !== 'number' ||
+        !Number.isFinite(startNumber) || !Number.isFinite(endNumber)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Start and end numbers must be valid numbers' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check for integers only
+    if (!Number.isInteger(startNumber) || !Number.isInteger(endNumber)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Numbers must be whole integers' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check for positive numbers (0 onwards)
+    if (startNumber < 0 || endNumber < 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Numbers must be 0 or greater' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check that startNumber <= endNumber
+    if (startNumber > endNumber) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Start number must be less than or equal to end number' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check maximum range of 50 numbers
+    if (endNumber - startNumber + 1 > MAX_RANGE) {
+      return new Response(
+        JSON.stringify({ success: false, error: `Maximum range is ${MAX_RANGE} numbers per request` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     console.log(`Processing Numberblocks images from ${startNumber} to ${endNumber} (IP: ${clientIP})`);
     
