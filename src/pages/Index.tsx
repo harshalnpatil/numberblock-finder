@@ -25,7 +25,7 @@ const Index = () => {
             Numberblocks Finder!
           </h1>
           <p className="text-xl font-medium text-muted-foreground">
-            Find your favorite Numberblocks pictures! 🌈
+            Find or imagine your favorite Numberblocks pictures! 🌈
           </p>
         </header>
 
