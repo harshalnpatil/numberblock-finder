@@ -184,11 +184,15 @@ export function ScrapeControls({
           <div className="flex justify-between text-lg font-semibold">
             <span className="flex items-center gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Looking for Numberblocks... 🔍
+              {progress.phase === 'generating' 
+                ? 'Creating your Numberblock with AI... ✨🎨' 
+                : 'Looking for Numberblocks... 🔍'}
             </span>
-            <span className="text-primary text-xl font-bold">
-              {progress.current} / {progress.total}
-            </span>
+            {progress.total > 1 && (
+              <span className="text-primary text-xl font-bold">
+                {progress.current} / {progress.total}
+              </span>
+            )}
           </div>
           <Progress value={progressPercent} className="h-4 rounded-full" />
         </div>
