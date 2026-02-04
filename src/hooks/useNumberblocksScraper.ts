@@ -19,7 +19,7 @@ function base64ToBlob(base64: string, contentType: string): Blob {
 export interface ScrapeProgress {
   current: number;
   total: number;
-  phase: 'scraping' | 'idle';
+  phase: 'scraping' | 'generating' | 'idle';
 }
 
 export function useNumberblocksScraper() {
@@ -38,7 +38,10 @@ export function useNumberblocksScraper() {
     cancelledRef.current = false;
     
     const total = endNumber - startNumber + 1;
-    setProgress({ current: 0, total, phase: 'scraping' });
+    const isSingleNumber = startNumber === endNumber;
+    
+    // For single numbers, show "generating" phase since it may auto-generate AI
+    setProgress({ current: 0, total, phase: isSingleNumber ? 'generating' : 'scraping' });
     
     const allResults: NumberImage[] = [];
     const batchSize = 5; // Process 5 at a time for progress updates
