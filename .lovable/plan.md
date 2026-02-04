@@ -1,136 +1,255 @@
 
 
-# Rate Limiting for Firecrawl API Protection
+# Smart Scraping Optimization Plan
 
 ## Overview
 
-This plan adds rate limiting to protect your Firecrawl API quota from abuse. Instead of blocking rate-limited users, the system will **slow them down** with artificial delays, making abuse impractical while still allowing legitimate users to get their results (just a bit slower).
+This plan implements intelligent Firecrawl API usage to avoid wasting credits on numbers that likely don't have wiki images, plus automatic AI generation for single-number searches when no wiki image exists.
 
-## How It Works
+---
 
-When a user triggers a scrape that needs to call Firecrawl:
+## Current State
 
-1. **Check cache first** - If all requested numbers are cached, no rate limit applies (free access to cached content)
-2. **Check rate limits** - Before making Firecrawl calls:
-   - **Global limit**: If too many Firecrawl calls happened recently across all users, add a delay
-   - **Per-IP limit**: If this specific IP made too many calls recently, add an additional delay
-3. **Apply delay** - Rate-limited requests wait before proceeding (e.g., 5-30 seconds based on severity)
-4. **Log the API call** - After successful Firecrawl call, record it for future rate limit checks
+- **scrape-numberblocks**: Calls Firecrawl API for every number not in cache
+- **generate-numberblock**: Only triggered manually via "Make with AI!" button
+- **useNumberblocksScraper**: Processes all numbers identically regardless of likelihood of finding a wiki image
 
-## Recommended Limits
+---
 
-| Limit Type | Threshold | Time Window | Delay Applied |
-|------------|-----------|-------------|---------------|
-| Per-IP | 20 new scrapes | 5 minutes | 10 seconds per request over limit |
-| Global | 100 new scrapes | 1 minute | 5 seconds per request over limit |
+## Proposed Rules
 
-These limits are generous for normal use (a kid searching 1-100 is fine), but make it impractical for someone to drain your quota quickly.
+```text
++------------------+---------------------------------------+-------------------+
+| Number Range     | Scrape Strategy                       | Auto-Generate?    |
++------------------+---------------------------------------+-------------------+
+| 1-100            | Always try Firecrawl                  | Only if single    |
++------------------+---------------------------------------+-------------------+
+| 101-1000         | Only "special" numbers:               | Only if single    |
+|                  |   - Multiples of 10, 25, 50           |                   |
+|                  |   - Perfect squares                   |                   |
+|                  |   - Powers of 2                       |                   |
+|                  |   - Repeating digits (111, 222...)    |                   |
++------------------+---------------------------------------+-------------------+
+| 1001+            | Only very special numbers:            | Only if single    |
+|                  |   - Powers of 10 (1000, 10000...)     |                   |
+|                  |   - Named magnitudes (million,        |                   |
+|                  |     billion, etc.)                    |                   |
+|                  |   - Already in catalog (cache check)  |                   |
++------------------+---------------------------------------+-------------------+
+```
 
-## User Experience
+**Auto-generation triggers when:**
+1. User searched for exactly 1 number (not a range)
+2. Number is not in cache
+3. Either: number is not worth scraping OR scraping returned no image
 
-- **Normal users**: No change, instant responses for cached content, small wait for new scrapes
-- **Heavy users**: Experience progressive slowdowns but still get results
-- **Bad actors**: Get frustrated by delays and give up (30+ seconds per image makes abuse impractical)
+---
 
-The frontend will show a message like "High demand - your request is queued..." instead of an error.
+## Implementation
+
+### 1. Backend: Add `shouldScrape()` Helper
+
+Create a function in the edge function to determine if a number is worth scraping:
+
+```typescript
+function shouldScrape(num: number): boolean {
+  // Rule A: Always try 1-100
+  if (num <= 100) return true;
+  
+  // Rule B: 101-1000 - only special numbers
+  if (num <= 1000) {
+    // Multiples of 10, 25, 50
+    if (num % 10 === 0) return true;
+    if (num % 25 === 0) return true;
+    if (num % 50 === 0) return true;
+    
+    // Perfect squares (121, 144, 169, 196, 225, 256, 289, 324, 361, 400...)
+    const sqrt = Math.sqrt(num);
+    if (Number.isInteger(sqrt)) return true;
+    
+    // Powers of 2 (128, 256, 512)
+    if (isPowerOf2(num)) return true;
+    
+    // Repeating digits (111, 222, 333...)
+    if (hasRepeatingDigits(num)) return true;
+    
+    return false;
+  }
+  
+  // Rule C: Above 1000 - only very special
+  // Powers of 10 (1000, 10000, 100000, 1000000...)
+  if (isPowerOf10(num)) return true;
+  
+  // Named magnitudes that appear in educational material
+  const namedMagnitudes = [
+    1000, 10000, 100000, 1000000, 
+    10000000, 100000000, 1000000000
+  ];
+  if (namedMagnitudes.includes(num)) return true;
+  
+  return false;
+}
+```
+
+### 2. Backend: Accept Single-Number Mode Flag
+
+Modify the edge function to accept a parameter indicating if this is a single-number search:
+
+```typescript
+// In request body parsing
+const isSingleNumber = body.isSingleNumber ?? (startNumber === endNumber);
+```
+
+### 3. Backend: Smart Scrape Logic
+
+Update the scraping loop to skip non-special numbers and return `skipScrape` flag:
+
+```typescript
+for (let num = startNumber; num <= endNumber; num++) {
+  if (cachedMap.has(num)) {
+    // Return from cache (existing logic)
+  } else if (!shouldScrape(num)) {
+    // Skip scraping, mark for potential AI generation
+    results.push({
+      number: num,
+      imageUrl: null,
+      pageUrl: `https://numberblocks.fandom.com/wiki/${numberToWord(num)}`,
+      error: 'Not expected to have wiki image',
+      skipScrape: true,
+    });
+  } else {
+    numbersToScrape.push(num);
+  }
+}
+```
+
+### 4. Backend: Auto-Generate for Single Numbers
+
+If single-number mode and no image found, automatically call the AI generation:
+
+```typescript
+// After scraping completes
+if (isSingleNumber && results.length === 1) {
+  const result = results[0];
+  if (!result.imageUrl && !result.cached) {
+    // Auto-generate with AI
+    const generated = await generateWithAI(result.number, supabase);
+    if (generated.success) {
+      result.imageUrl = generated.imageUrl;
+      result.aiGenerated = true;
+      result.error = undefined;
+    }
+  }
+}
+```
+
+### 5. Backend: Extract AI Generation to Shared Function
+
+Move AI generation logic to a reusable function within the scrape function (or import from shared module):
+
+```typescript
+async function generateWithAI(
+  number: number, 
+  supabase: any
+): Promise<{ success: boolean; imageUrl?: string; error?: string }>
+```
+
+### 6. Frontend: Pass Single-Number Flag
+
+Update the API call to indicate single-number searches:
+
+```typescript
+// In numberblocksApi.scrapeImages
+body: { 
+  startNumber, 
+  endNumber,
+  isSingleNumber: startNumber === endNumber 
+}
+```
+
+### 7. Response Enhancement
+
+Add new fields to the response for transparency:
+
+```typescript
+interface NumberImage {
+  number: number;
+  imageUrl: string | null;
+  pageUrl: string;
+  cached?: boolean;
+  error?: string;
+  aiGenerated?: boolean;
+  skipScrape?: boolean;  // New: indicates we didn't try Firecrawl
+  autoGenerated?: boolean;  // New: indicates auto-AI (not manual click)
+}
+```
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `supabase/functions/scrape-numberblocks/index.ts` | Add `shouldScrape()`, `isPowerOf2()`, `isPowerOf10()`, `hasRepeatingDigits()` helpers; add smart scraping logic; add auto-generation for single numbers |
+| `src/lib/api/numberblocks.ts` | Update `scrapeImages` to pass `isSingleNumber` flag; add `skipScrape` to interface |
+| `src/hooks/useNumberblocksScraper.ts` | No changes needed - already handles `aiGenerated` field |
+| `src/components/ImageGallery.tsx` | Optional: distinguish auto-generated vs manual-generated |
+
+---
+
+## Edge Cases Handled
+
+1. **Cached numbers above 1000**: Always returned from cache, no re-scraping
+2. **Range searches (multiple numbers)**: No auto-generation (user can click "Make with AI!")
+3. **Special numbers that fail to scrape**: Still auto-generate if single-number mode
+4. **Rate limiting**: Fewer Firecrawl calls = less likely to hit limits
+
+---
+
+## API Credit Savings Estimate
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| Search 1-100 | 100 calls | 100 calls |
+| Search 101-200 | 100 calls | ~25 calls (multiples of 10, squares, etc.) |
+| Search 1-1000 | 1000 calls | ~180 calls |
+| Search 1001-2000 | 1000 calls | 1 call (only 1000) |
+| Search single #5000 | 1 call | 0 calls + auto AI |
 
 ---
 
 ## Technical Details
 
-### Database Changes
-
-Create a new `rate_limit_log` table to track Firecrawl API calls:
-
-```sql
-CREATE TABLE rate_limit_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  ip_address text NOT NULL,
-  endpoint text NOT NULL,
-  api_calls_count integer NOT NULL DEFAULT 1,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
--- Index for efficient querying
-CREATE INDEX idx_rate_limit_log_ip_time ON rate_limit_log(ip_address, created_at DESC);
-CREATE INDEX idx_rate_limit_log_time ON rate_limit_log(created_at DESC);
-
--- Auto-cleanup old entries (older than 1 hour)
--- This keeps the table small
-```
-
-RLS Policy: Service role only (edge function uses service role key, no public access needed).
-
-### Edge Function Changes
-
-Update `scrape-numberblocks/index.ts` to:
-
-1. Extract client IP from request headers
-2. Before calling Firecrawl, check both limits
-3. Calculate and apply delay if rate limited
-4. Log successful API calls to the table
-5. Return a special header indicating if user was throttled
-
-Key code additions:
+### Helper Functions
 
 ```typescript
-// Get client IP
-function getClientIP(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
-    || req.headers.get('cf-connecting-ip') 
-    || 'unknown';
+function isPowerOf2(n: number): boolean {
+  return n > 0 && (n & (n - 1)) === 0;
 }
 
-// Check rate limits and return delay in ms
-async function checkRateLimits(supabase, ip: string): Promise<number> {
-  const now = new Date();
-  
-  // Check per-IP limit (last 5 minutes)
-  const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
-  const { data: ipCalls } = await supabase
-    .from('rate_limit_log')
-    .select('api_calls_count')
-    .eq('ip_address', ip)
-    .gte('created_at', fiveMinAgo.toISOString());
-  
-  const ipTotal = ipCalls?.reduce((sum, r) => sum + r.api_calls_count, 0) || 0;
-  
-  // Check global limit (last 1 minute)  
-  const oneMinAgo = new Date(now.getTime() - 60 * 1000);
-  const { data: globalCalls } = await supabase
-    .from('rate_limit_log')
-    .select('api_calls_count')
-    .gte('created_at', oneMinAgo.toISOString());
-  
-  const globalTotal = globalCalls?.reduce((sum, r) => sum + r.api_calls_count, 0) || 0;
-  
-  // Calculate delay
-  let delay = 0;
-  if (ipTotal > 20) delay += (ipTotal - 20) * 10000; // 10s per extra call
-  if (globalTotal > 100) delay += (globalTotal - 100) * 5000; // 5s per extra call
-  
-  return Math.min(delay, 60000); // Cap at 60 seconds
+function isPowerOf10(n: number): boolean {
+  if (n < 10) return false;
+  while (n >= 10) {
+    if (n % 10 !== 0) return false;
+    n = n / 10;
+  }
+  return n === 1;
 }
 
-// Log API calls after successful Firecrawl request
-async function logApiCalls(supabase, ip: string, count: number) {
-  await supabase.from('rate_limit_log').insert({
-    ip_address: ip,
-    endpoint: 'scrape-numberblocks',
-    api_calls_count: count
-  });
+function hasRepeatingDigits(n: number): boolean {
+  const str = n.toString();
+  if (str.length < 2) return false;
+  return str.split('').every(c => c === str[0]);
 }
 ```
 
-### Cleanup Strategy
+### Special Numbers in 101-1000
 
-Add a scheduled cleanup or use database auto-expiry to delete entries older than 1 hour. This keeps the table small and queries fast.
+- **Multiples of 10**: 110, 120, 130... (90 numbers)
+- **Multiples of 25** (not 10): 125, 175, 225... (~18 numbers)  
+- **Perfect squares**: 121, 144, 169, 196, 225, 256, 289, 324, 361, 400, 441, 484, 529, 576, 625, 676, 729, 784, 841, 900, 961 (~21 numbers, many overlap with multiples)
+- **Powers of 2**: 128, 256, 512 (3 numbers)
+- **Repeating digits**: 111, 222, 333, 444, 555, 666, 777, 888, 999 (9 numbers)
 
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| Database migration | Create `rate_limit_log` table with indexes |
-| `supabase/functions/scrape-numberblocks/index.ts` | Add rate limit checking, delays, and logging |
-| `src/hooks/useNumberblocksScraper.ts` | (Optional) Show "high demand" message if throttled |
+**Total unique special numbers in 101-1000**: ~110 out of 900 (88% reduction in API calls)
 
