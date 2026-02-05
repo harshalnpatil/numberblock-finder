@@ -19,7 +19,7 @@ function base64ToBlob(base64: string, contentType: string): Blob {
 export interface ScrapeProgress {
   current: number;
   total: number;
-  phase: 'scraping' | 'generating' | 'idle';
+  phase: 'checking' | 'scraping' | 'generating' | 'idle';
 }
 
 export function useNumberblocksScraper() {
@@ -40,8 +40,8 @@ export function useNumberblocksScraper() {
     const total = endNumber - startNumber + 1;
     const isSingleNumber = startNumber === endNumber;
     
-    // For single numbers, show "generating" phase since it may auto-generate AI
-    setProgress({ current: 0, total, phase: isSingleNumber ? 'generating' : 'scraping' });
+    // Start with "checking" phase to indicate we're looking in cache first
+    setProgress({ current: 0, total, phase: 'checking' });
     
     const allResults: NumberImage[] = [];
     const batchSize = 5; // Process 5 at a time for progress updates
@@ -59,7 +59,17 @@ export function useNumberblocksScraper() {
         
         const batchEnd = Math.min(i + batchSize - 1, endNumber);
         
+        // For single numbers, show generating phase since backend may auto-generate
+        if (isSingleNumber && i === startNumber) {
+          setProgress({ current: 0, total, phase: 'generating' });
+        }
+        
         const response = await numberblocksApi.scrapeImages(i, batchEnd);
+        
+        // After first batch for range mode, switch to 'scraping' phase
+        if (!isSingleNumber) {
+          setProgress(prev => prev.phase === 'checking' ? { ...prev, phase: 'scraping' } : prev);
+        }
         
         // Check again after async call
         if (cancelledRef.current) {
