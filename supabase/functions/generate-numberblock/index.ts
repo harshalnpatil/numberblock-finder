@@ -54,7 +54,7 @@ ${structureGuide}
 
 VERIFICATION INSTRUCTION:
 After drawing, verify that the TOTAL number of blocks visible equals EXACTLY ${number}.
-If you draw ${num <= 100 ? "each cube" : "the structural units"}, count them to ensure correctness.
+If you draw ${number <= 100 ? "each cube" : "the structural units"}, count them to ensure correctness.
 
 CHARACTER DESIGN:
 - The entire body is made of visible cube blocks in the arrangement above; each block is a small cube.
