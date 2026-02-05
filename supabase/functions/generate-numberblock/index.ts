@@ -40,13 +40,21 @@ Deno.serve(async (req) => {
     const structureGuide = getStructureGuide(number);
     const bodyColor = getNumberblockColor(number);
 
-    const prompt = `You are drawing a Numberblocks character: a figure made of cube blocks from the BBC show. The number of blocks equals the number. One face on the front only. The number (Numberling) appears on top. Black and white line art only, for a coloring page.
+    // Log for debugging
+    console.log(`Number: ${number} | Word: ${numberWord} | Color: ${bodyColor}`);
+    console.log(`Structure Guide:\n${structureGuide}`);
 
-SUBJECT: Number ${number} (${numberWord}).
+    const prompt = `You are drawing a Numberblocks character: a figure made of cube blocks from the BBC show. The TOTAL number of visible blocks must EXACTLY equal ${number}. One face on the front only. The number (Numberling) appears on top. Black and white line art only, for a coloring page.
 
-BLOCK LAYOUT (must be clearly visible and countable):
-The drawing must show exactly this many blocks in this layout; the reader should be able to count them.
+CRITICAL: The NUMBER OF BLOCKS MUST BE EXACTLY ${number} (${numberWord}).
+Count carefully: ${number} blocks total, no more, no less.
+
+BLOCK LAYOUT (MUST be clearly visible and countable):
 ${structureGuide}
+
+VERIFICATION INSTRUCTION:
+After drawing, verify that the TOTAL number of blocks visible equals EXACTLY ${number}.
+If you draw ${num <= 100 ? "each cube" : "the structural units"}, count them to ensure correctness.
 
 CHARACTER DESIGN:
 - The entire body is made of visible cube blocks in the arrangement above; each block is a small cube.
@@ -55,15 +63,19 @@ CHARACTER DESIGN:
 - No arms or legs, OR very simple rounded limbs only (no stick figures).
 - Use a single body color: ${bodyColor}. Draw as black outline only for coloring.
 
-DO NOT:
-- Add scenery, backgrounds, rainbows, or extra characters.
-- Put the number on the side or in a corner—it must be on top of the blocks.
-- Draw multiple faces (only one face on the front).
-- Use shading, gradients, or detailed texture—black outline only.
+STRICT RULES:
+- TOTAL block count MUST be ${number} - verify by counting
+- Add NO extra blocks, NO missing blocks
+- NO scenery, backgrounds, rainbows, or extra characters
+- Number "${number.toLocaleString()}" must be on TOP of the blocks, not on the side or corner
+- Only ONE face on the front, NO multiple faces
+- Black outline ONLY - no shading, gradients, or detailed texture
+- Static image - NO animation, NO GIF effects, NO motion
 
-Result: one Numberblocks character, black and white line art, coloring page style, no background.`;
+Result: one Numberblocks character, black and white line art, coloring page style, no background, EXACTLY ${number} blocks.`;
 
     // Call OpenAI Images API for image generation
+    // Note: Explicitly request static PNG image, no animation
     const response = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
@@ -76,6 +88,7 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         n: 1,
         size: "1024x1024",
         response_format: "b64_json",
+        quality: "standard", // Explicit quality setting
       }),
     });
 
@@ -270,12 +283,16 @@ function getStructureGuide(num: number): string {
     const tens = Math.floor(num / 10);
     const ones = num % 10;
     const onesText =
-      ones > 0 ? ` with ${ones} extra single block${ones > 1 ? "s" : ""} attached on the side or top` : "";
-    return `- Build from ${tens} groups of ten${onesText}
-- The tens form the main rectangular body
-- Extra ones attach clearly and separately
-- The viewer should "see" addition: ${tens}×10 + ${ones} = ${num}
-- All blocks should still be individually visible`;
+      ones > 0
+        ? ` PLUS exactly ${ones} individual single block${ones > 1 ? "s" : ""} attached separately on the side or top`
+        : "";
+    return `- Build from EXACTLY ${tens} RECTANGULAR groups of ten blocks each (each group is a 2×5 or 5×2 rectangle showing 10 blocks)${onesText}
+- TOTAL COUNT: ${tens} rectangles × 10 blocks each = ${tens * 10} blocks, PLUS ${ones} individual blocks = ${num} blocks total
+- Each "ten-group" MUST be a clear RECTANGLE of 10 visible cubes (arranged as 2 rows of 5, or 5 rows of 2)
+- The ${tens} ten-rectangles form the main body (stacked or side-by-side)
+- The ${ones} individual blocks attach clearly and separately (not merged into the ten-groups)
+- Visual math: the viewer should clearly SEE ${tens} ten-rectangles + ${ones} singles = ${num}
+- All ${num} blocks must be individually visible and countable`;
   }
 
   if (num === 100) {
@@ -290,11 +307,16 @@ function getStructureGuide(num: number): string {
     // Hundreds: multiple slabs
     const hundreds = Math.floor(num / 100);
     const remainder = num % 100;
-    const remainderText = remainder > 0 ? ` plus visible extra blocks for the remaining ${remainder}` : "";
-    return `- Show as ${hundreds} stacked or side-by-side 10×10 hundred-slabs${remainderText}
-- Each hundred-slab keeps its 10×10 identity
+    const remainderText =
+      remainder > 0
+        ? ` PLUS exactly ${remainder} additional visible blocks for the remaining ${remainder} (this adds to the total)`
+        : "";
+    return `- Show as EXACTLY ${hundreds} stacked or side-by-side 10×10 hundred-slabs (that's ${hundreds * 100} blocks)${remainderText}
+- TOTAL COUNT: ${hundreds * 100} + ${remainder} = ${num} blocks
+- Each hundred-slab keeps its 10×10 grid identity
+- Extra ${remainder} blocks must be clearly visible and separate from the hundred-slabs
 - Structure is architectural - the count is implied by the pattern
-- Think of it as ${hundreds} "hundred-blocks" combined`;
+- Think of it as ${hundreds} "hundred-blocks"${remainder > 0 ? ` combined with ${remainder} individual blocks` : " combined"}`;
   }
 
   if (num <= 9999) {
@@ -333,19 +355,19 @@ function getSmallNumberArrangement(num: number): string {
     case 1:
       return "Exactly one cube";
     case 2:
-      return "Stack of 2 cubes (vertical or side-by-side)";
+      return "Stack of 2 cubes (vertical)";
     case 3:
-      return "Stack of 3 cubes (vertical or in a row)";
+      return "Stack of 3 cubes (vertical)";
     case 4:
       return "2×2 square of 4 cubes";
     case 5:
-      return "5 cubes in a row or plus shape";
+      return "Stack of 5 cubes (vertical)";
     case 6:
-      return "2×3 rectangle of 6 cubes";
+      return "2×3 vertical rectangle of 6 cubes";
     case 7:
-      return "7 cubes: e.g. 2×3 rectangle with 1 on top";
+      return "Stack of 7 cubes (vertical)";
     case 8:
-      return "2×4 rectangle or 2×2×2 cube of 8 cubes";
+      return "2×4 vertical rectangle or 2×2×2 cube of 8 cubes";
     case 9:
       return "3×3 square of 9 cubes";
     default:
