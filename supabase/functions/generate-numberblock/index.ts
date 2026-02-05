@@ -282,17 +282,23 @@ function getStructureGuide(num: number): string {
     // Two-digit: tens + ones
     const tens = Math.floor(num / 10);
     const ones = num % 10;
+
+    // CRITICAL: Tens are arranged as VERTICAL COLUMNS side-by-side, forming an N×10 grid
+    // where N = number of tens (e.g., 30 = 3 columns × 10 rows = 3×10 grid)
     const onesText =
       ones > 0
-        ? ` PLUS exactly ${ones} individual single block${ones > 1 ? "s" : ""} attached separately on the side or top`
+        ? ` PLUS exactly ${ones} individual single cube${ones > 1 ? "s" : ""} attached on top or to the side`
         : "";
-    return `- Build from EXACTLY ${tens} RECTANGULAR groups of ten blocks each (each group is a 2×5 or 5×2 rectangle showing 10 blocks)${onesText}
-- TOTAL COUNT: ${tens} rectangles × 10 blocks each = ${tens * 10} blocks, PLUS ${ones} individual blocks = ${num} blocks total
-- Each "ten-group" MUST be a clear RECTANGLE of 10 visible cubes (arranged as 2 rows of 5, or 5 rows of 2)
-- The ${tens} ten-rectangles form the main body (stacked or side-by-side)
-- The ${ones} individual blocks attach clearly and separately (not merged into the ten-groups)
-- Visual math: the viewer should clearly SEE ${tens} ten-rectangles + ${ones} singles = ${num}
-- All ${num} blocks must be individually visible and countable`;
+
+    return `- Build as ${tens} VERTICAL COLUMNS standing side-by-side, each column is exactly 10 blocks tall${onesText}
+- ARRANGEMENT: ${tens} columns × 10 rows = a ${tens}×10 rectangular grid of ${tens * 10} blocks${ones > 0 ? ` + ${ones} extra cube${ones > 1 ? "s" : ""}` : ""}
+- Each column is a VERTICAL STACK of 10 blocks (1 block wide, 10 blocks tall)
+- The ${tens} columns stand NEXT TO EACH OTHER horizontally (forming a wide ${tens}×10 rectangle)
+- TOTAL GRID STRUCTURE: ${tens} blocks wide (horizontal) by 10 blocks tall (vertical)
+- Grid lines must show all ${num} individual cubes clearly
+${ones > 0 ? `- The ${ones} extra cube${ones > 1 ? "s" : ""} attach separately on top or to the side (NOT part of the main ${tens}×10 grid)` : ""}
+- Visual verification: count ${tens} vertical columns, each column has exactly 10 blocks stacked vertically
+- Example: for number ${num}, you should see ${tens} vertical stacks of 10, lined up horizontally${ones > 0 ? `, plus ${ones} loose cube${ones > 1 ? "s" : ""}` : ""}`;
   }
 
   if (num === 100) {
