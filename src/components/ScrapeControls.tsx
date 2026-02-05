@@ -184,9 +184,11 @@ export function ScrapeControls({
           <div className="flex justify-between text-lg font-semibold">
             <span className="flex items-center gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              {progress.phase === 'generating' 
-                ? 'Creating your Numberblock with AI... ✨🎨' 
-                : 'Looking for Numberblocks... 🔍'}
+              {progress.phase === 'checking' 
+                ? 'Checking for saved pictures... 📂' 
+                : progress.phase === 'generating' 
+                  ? 'Creating your Numberblock with AI... ✨🎨' 
+                  : 'Looking for Numberblocks... 🔍'}
             </span>
             {progress.total > 1 && (
               <span className="text-primary text-xl font-bold">
