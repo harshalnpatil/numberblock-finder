@@ -6,6 +6,66 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ============= Rate Limiting =============
+
+const AI_RATE_LIMITS = {
+  perIp: { threshold: 10, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+  global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
+  maxDelay: 60000,
+};
+
+function getClientIP(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
+    || req.headers.get('cf-connecting-ip') 
+    || req.headers.get('x-real-ip')
+    || 'unknown';
+}
+
+async function checkAIRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number }> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - AI_RATE_LIMITS.perIp.windowMs);
+  
+  const { data: ipCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('ip_address', ip)
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', windowStart.toISOString());
+  
+  const ipTotal = ipCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+  
+  const { data: globalCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', windowStart.toISOString());
+  
+  const globalTotal = globalCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+  
+  let delay = 0;
+  if (ipTotal > AI_RATE_LIMITS.perIp.threshold) {
+    delay += (ipTotal - AI_RATE_LIMITS.perIp.threshold) * AI_RATE_LIMITS.perIp.delayPerExcess;
+  }
+  if (globalTotal > AI_RATE_LIMITS.global.threshold) {
+    delay += (globalTotal - AI_RATE_LIMITS.global.threshold) * AI_RATE_LIMITS.global.delayPerExcess;
+  }
+  
+  return { delay: Math.min(delay, AI_RATE_LIMITS.maxDelay), ipTotal, globalTotal };
+}
+
+async function logAICall(supabase: any, ip: string): Promise<void> {
+  const { error } = await supabase.from('rate_limit_log').insert({
+    ip_address: ip,
+    endpoint: 'generate-numberblock',
+    api_calls_count: 1,
+  });
+  if (error) {
+    console.error('Failed to log AI call:', error);
+  }
+}
+
+// ============= Main Handler =============
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -24,6 +84,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const clientIP = getClientIP(req);
     const { number } = await req.json();
 
     if (!number || typeof number !== "number") {
@@ -31,6 +92,14 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Check rate limits before proceeding
+    const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
+    
+    if (delay > 0) {
+      console.log(`AI generation rate limited: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     console.log(`Generating AI image for Numberblock ${number}`);
@@ -163,6 +232,9 @@ Result: one Numberblocks character, black and white line art, coloring page styl
     } = supabase.storage.from("numberblocks-images").getPublicUrl(storagePath);
 
     console.log(`AI-generated image for ${number} saved at ${storagePath}`);
+
+    // Log the AI generation call for rate limiting
+    await logAICall(supabase, clientIP);
 
     return new Response(
       JSON.stringify({
