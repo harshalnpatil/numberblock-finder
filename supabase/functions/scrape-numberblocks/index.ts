@@ -107,48 +107,105 @@ function shouldScrape(num: number): boolean {
 
 async function generateWithAI(
   number: number, 
-  supabase: any
+  supabase: any,
+  clientIP: string = 'unknown'
 ): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  if (!LOVABLE_API_KEY) {
-    return { success: false, error: 'LOVABLE_API_KEY is not configured' };
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  if (!OPENAI_API_KEY) {
+    return { success: false, error: 'OPENAI_API_KEY is not configured' };
   }
 
-  console.log(`Auto-generating AI image for Numberblock ${number}`);
+  // Check AI generation rate limits (shared with generate-numberblock endpoint)
+  const aiRateLimits = {
+    perIp: { threshold: 10, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+    global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
+    maxDelay: 60000,
+  };
+
+  const now = new Date();
+  const aiWindowStart = new Date(now.getTime() - aiRateLimits.perIp.windowMs);
+  
+  const { data: ipGenCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('ip_address', clientIP)
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', aiWindowStart.toISOString());
+  
+  const ipGenTotal = ipGenCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+  
+  const { data: globalGenCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', aiWindowStart.toISOString());
+  
+  const globalGenTotal = globalGenCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+
+  let genDelay = 0;
+  if (ipGenTotal > aiRateLimits.perIp.threshold) {
+    genDelay += (ipGenTotal - aiRateLimits.perIp.threshold) * aiRateLimits.perIp.delayPerExcess;
+  }
+  if (globalGenTotal > aiRateLimits.global.threshold) {
+    genDelay += (globalGenTotal - aiRateLimits.global.threshold) * aiRateLimits.global.delayPerExcess;
+  }
+  genDelay = Math.min(genDelay, aiRateLimits.maxDelay);
+
+  if (genDelay > 0) {
+    console.log(`AI generation rate limited: IP=${clientIP}, ipTotal=${ipGenTotal}, globalTotal=${globalGenTotal}, delay=${genDelay}ms`);
+    await new Promise(resolve => setTimeout(resolve, genDelay));
+  }
+
+  console.log(`Auto-generating AI image for Numberblock ${number} via OpenAI DALL-E 3`);
 
   try {
     const numberWord = numberToWordForAI(number);
     const structureGuide = getStructureGuide(number);
+    const bodyColor = getNumberblockColor(number);
     
-    const prompt = `Create a simple, kid-friendly coloring page sketch of a Numberblocks character representing the number ${number} (${numberWord}).
+    const prompt = `You are drawing a Numberblocks character: a figure made of cube blocks from the BBC show. The TOTAL number of visible blocks must EXACTLY equal ${number}. One face on the front only. The number (Numberling) appears on top. Black and white line art only, for a coloring page.
 
-CRITICAL STRUCTURE RULES - One block always equals one unit:
+CRITICAL: The NUMBER OF BLOCKS MUST BE EXACTLY ${number} (${numberWord}).
+Count carefully: ${number} blocks total, no more, no less.
+
+BLOCK LAYOUT (MUST be clearly visible and countable):
 ${structureGuide}
 
+VERIFICATION INSTRUCTION:
+After drawing, verify that the TOTAL number of blocks visible equals EXACTLY ${number}.
+If you draw ${number <= 100 ? "each cube" : "the structural units"}, count them to ensure correctness.
+
 CHARACTER DESIGN:
-- Single friendly face on the FRONT of the structure, centered and readable
-- Simple stick arms and legs that scale proportionally but stay thin
-- Cute cartoon eyes and a warm smile
-- One solid body color (shown as outline for coloring)
+- The entire body is made of visible cube blocks in the arrangement above; each block is a small cube.
+- Exactly ONE face on the front of the block structure: two simple eyes and a smile. No faces on side blocks.
+- Draw the digit "${number.toLocaleString()}" on top of the character (above the blocks), bold and clear, like the show's Numberling.
+- No arms or legs, OR very simple rounded limbs only (no stick figures).
+- Use a single body color: ${bodyColor}. Draw as black outline only for coloring.
 
-STYLE:
-- Black and white line drawing suitable for children to color
-- Simple, cute, cartoon-like, similar to BBC Numberblocks show
-- Clean outlines, no shading
-- Include the number "${number.toLocaleString()}" displayed clearly near the character
+STRICT RULES:
+- TOTAL block count MUST be ${number} - verify by counting
+- Add NO extra blocks, NO missing blocks
+- NO scenery, backgrounds, rainbows, or extra characters
+- Number "${number.toLocaleString()}" must be on TOP of the blocks, not on the side or corner
+- Only ONE face on the front, NO multiple faces
+- Black outline ONLY - no shading, gradients, or detailed texture
+- Static image - NO animation, NO GIF effects, NO motion
 
-Ultra high resolution coloring page illustration.`;
+Result: one Numberblocks character, black and white line art, coloring page style, no background, EXACTLY ${number} blocks.`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image',
-        messages: [{ role: 'user', content: prompt }],
-        modalities: ['image', 'text'],
+        model: 'dall-e-3',
+        prompt,
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json',
+        quality: 'standard',
       }),
     });
 
@@ -156,26 +213,20 @@ Ultra high resolution coloring page illustration.`;
       if (response.status === 429) {
         return { success: false, error: 'Rate limit exceeded' };
       }
-      if (response.status === 402) {
-        return { success: false, error: 'AI credits exhausted' };
-      }
+      const errorText = await response.text();
+      console.error('OpenAI DALL-E error:', response.status, errorText);
       return { success: false, error: 'Failed to generate image' };
     }
 
     const data = await response.json();
-    const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    const base64Data = data.data?.[0]?.b64_json;
     
-    if (!imageData) {
+    if (!base64Data) {
       return { success: false, error: 'No image generated' };
     }
 
-    const base64Match = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!base64Match) {
-      return { success: false, error: 'Invalid image format' };
-    }
-
-    const imageType = base64Match[1];
-    const base64Data = base64Match[2];
+    // DALL-E returns PNG images
+    const imageType = 'png';
     
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -210,6 +261,9 @@ Ultra high resolution coloring page illustration.`;
       .from('numberblocks-images')
       .getPublicUrl(storagePath);
 
+    // Log AI generation call for rate limiting (shared endpoint with generate-numberblock)
+    await logApiCalls(supabase, clientIP, 1, 'generate-numberblock');
+
     console.log(`Auto-generated AI image for ${number} saved at ${storagePath}`);
     
     return { success: true, imageUrl: publicUrl };
@@ -217,6 +271,15 @@ Ultra high resolution coloring page illustration.`;
     console.error('AI generation error:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
+}
+
+// Canonical Numberblocks character colors (1-10 from the show); 11+ use single color.
+function getNumberblockColor(num: number): string {
+  const colors: Record<number, string> = {
+    1: 'red', 2: 'orange', 3: 'yellow', 4: 'green', 5: 'blue',
+    6: 'purple', 7: 'indigo', 8: 'pink', 9: 'teal', 10: 'light gray or white',
+  };
+  return colors[num] ?? 'single color';
 }
 
 // ============= Rate Limiting =============
@@ -454,7 +517,7 @@ Deno.serve(async (req) => {
       const singleResult = results.find(r => r.number === startNumber);
       if (singleResult && !singleResult.imageUrl && !singleResult.cached) {
         console.log(`Auto-generating AI image for single number ${startNumber}`);
-        const generated = await generateWithAI(startNumber, supabase);
+        const generated = await generateWithAI(startNumber, supabase, clientIP);
         if (generated.success && generated.imageUrl) {
           singleResult.imageUrl = generated.imageUrl;
           singleResult.aiGenerated = true;
