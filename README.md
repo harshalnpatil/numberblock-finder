@@ -74,4 +74,13 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
+
+This means:
+- ✅ You can use, modify, and distribute this software
+- ✅ You can use it for commercial purposes
+- ⚠️ **Any derivative works must also be open source under GPL-3.0 or compatible license**
+- ⚠️ You must include the original copyright and license notices
+- ⚠️ You must disclose the source code of any modifications
+
+See the [LICENSE](LICENSE) file for full details, or visit <https://www.gnu.org/licenses/gpl-3.0.html>
