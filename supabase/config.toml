@@ -1,1 +1,4 @@
 project_id = "hfiasynirtqtbbqoviol"
+
+[functions.compose-numberblock]
+verify_jwt = false

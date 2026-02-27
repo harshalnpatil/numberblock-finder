@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { NumberImage, numberblocksApi } from '@/lib/api/numberblocks';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, ImageOff, Loader2, Database, Sparkles, Wand2 } from 'lucide-react';
+import { AlertCircle, ImageOff, Loader2, Database, Sparkles, Wand2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,7 +19,7 @@ function isCachedUrl(url: string): boolean {
   return url.includes('supabase.co/storage');
 }
 
-function ProxiedImage({ imageUrl, number, cached, aiGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean }) {
+function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -105,6 +105,11 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated }: { imageUrl: str
           AI
         </div>
       )}
+      {composed && (
+        <div className="absolute top-1 right-1 bg-primary/90 text-primary-foreground text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
+          🧩 Composed
+        </div>
+      )}
     </div>
   );
 }
@@ -112,21 +117,45 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated }: { imageUrl: str
 interface ImageCardProps {
   img: NumberImage;
   onGenerate?: (number: number) => void;
+  onRegenerate?: (number: number) => void;
   isGenerating?: boolean;
+  isRegenerating?: boolean;
 }
 
-function ImageCard({ img, onGenerate, isGenerating }: ImageCardProps) {
+function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating }: ImageCardProps) {
   return (
     <Card 
-      className={`overflow-hidden rounded-3xl border-4 transition-all hover:scale-105 hover:shadow-xl
+      className={`group overflow-hidden rounded-3xl border-4 transition-all hover:scale-105 hover:shadow-xl
         ${!img.imageUrl ? 'border-destructive/30 bg-destructive/5' : 'border-primary/20 hover:border-primary/50'}
         ${img.cached ? 'ring-2 ring-primary/30' : ''}
         ${img.aiGenerated ? 'ring-2 ring-secondary/50' : ''}
+        ${img.composed ? 'ring-2 ring-accent/50' : ''}
       `}
     >
       <div className="aspect-square relative bg-gradient-to-br from-muted/50 to-muted flex items-center justify-center">
         {img.imageUrl ? (
-          <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} />
+          <>
+            <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} composed={img.composed} />
+            {/* Regenerate button overlay */}
+            <Button
+              size="icon"
+              variant="secondary"
+              className="absolute bottom-1 right-1 h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity shadow-md"
+              style={{ opacity: isRegenerating ? 1 : undefined }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRegenerate?.(img.number);
+              }}
+              disabled={isRegenerating}
+              title="Regenerate image"
+            >
+              {isRegenerating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2 text-muted-foreground p-4">
             {isGenerating ? (
@@ -175,6 +204,7 @@ function ImageCard({ img, onGenerate, isGenerating }: ImageCardProps) {
 
 export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
   const [generatingNumbers, setGeneratingNumbers] = useState<Set<number>>(new Set());
+  const [regeneratingNumbers, setRegeneratingNumbers] = useState<Set<number>>(new Set());
   const { toast } = useToast();
 
   const handleGenerate = async (number: number) => {
@@ -204,6 +234,40 @@ export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
       });
     } finally {
       setGeneratingNumbers(prev => {
+        const next = new Set(prev);
+        next.delete(number);
+        return next;
+      });
+    }
+  };
+
+  const handleRegenerate = async (number: number) => {
+    setRegeneratingNumbers(prev => new Set(prev).add(number));
+    
+    try {
+      const response = await numberblocksApi.regenerate(number);
+      
+      if (response.success && response.imageUrl) {
+        toast({
+          title: 'Regenerated! 🔄',
+          description: `New image for Numberblock ${number.toLocaleString()}!`,
+        });
+        onImageUpdate?.(number, response.imageUrl);
+      } else {
+        toast({
+          title: 'Oops!',
+          description: response.error || 'Could not regenerate picture',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Oops!',
+        description: 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setRegeneratingNumbers(prev => {
         const next = new Set(prev);
         next.delete(number);
         return next;
@@ -264,7 +328,9 @@ export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
             key={img.number}
             img={img}
             onGenerate={handleGenerate}
+            onRegenerate={handleRegenerate}
             isGenerating={generatingNumbers.has(img.number)}
+            isRegenerating={regeneratingNumbers.has(img.number)}
           />
         ))}
       </div>
