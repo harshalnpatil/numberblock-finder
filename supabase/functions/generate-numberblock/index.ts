@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
-    const { number } = await req.json();
+    const { number, force } = await req.json();
 
     if (!number || typeof number !== "number") {
       return new Response(JSON.stringify({ success: false, error: "Number is required" }), {
@@ -94,7 +94,45 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check rate limits before proceeding
+    // If force=true, delete existing cache entry first
+    if (force) {
+      console.log(`Force regeneration: clearing cache for ${number}`);
+      await supabase.from("numberblocks_cache").delete().eq("number", number);
+    }
+
+    // For numbers > 10, try composition first
+    if (number > 10) {
+      console.log(`Trying composition first for Numberblock ${number}`);
+      try {
+        const composeResponse = await fetch(`${supabaseUrl}/functions/v1/compose-numberblock`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ number }),
+        });
+        
+        const composeData = await composeResponse.json();
+        if (composeData.success && composeData.imageUrl) {
+          console.log(`Composition succeeded for ${number}`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              imageUrl: composeData.imageUrl,
+              composed: true,
+              aiGenerated: false,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        console.log(`Composition failed for ${number}, falling back to DALL-E: ${composeData.error}`);
+      } catch (error) {
+        console.log(`Composition error for ${number}, falling back to DALL-E:`, error);
+      }
+    }
+
+    // Check rate limits before AI generation
     const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
     
     if (delay > 0) {
