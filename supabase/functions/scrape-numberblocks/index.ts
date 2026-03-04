@@ -625,7 +625,34 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
     }
 
     const html = data.data?.html || data.html || '';
-    const originalImageUrl = extractInfoboxImage(html, num);
+    let originalImageUrl = extractInfoboxImage(html, num);
+    
+    // If no image found, check if this is a disambiguation page and retry with _(character) suffix
+    if (!originalImageUrl && isDisambiguationPage(html)) {
+      const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
+      console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
+      
+      const retryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: charPageUrl,
+          formats: ['html', 'links'],
+          onlyMainContent: false,
+        }),
+      });
+      
+      const retryData = await retryResponse.json();
+      if (retryResponse.ok) {
+        const retryHtml = retryData.data?.html || retryData.html || '';
+        originalImageUrl = extractInfoboxImage(retryHtml, num);
+      } else {
+        console.error(`Firecrawl retry error for ${num} _(character):`, retryData);
+      }
+    }
     
     if (!originalImageUrl) {
       return { number: num, imageUrl: null, pageUrl, error: 'No image found' };
@@ -690,6 +717,13 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
+}
+
+function isDisambiguationPage(html: string): boolean {
+  const lower = html.toLowerCase();
+  return lower.includes('may refer to') || 
+         lower.includes('disambiguation') || 
+         lower.includes('disambiguations');
 }
 
 function isValidCharacterImage(imageUrl: string): boolean {
