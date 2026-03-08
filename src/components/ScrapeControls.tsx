@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, Download, Square, Sparkles, ChevronDown } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Loader2, Download, Square, Sparkles } from 'lucide-react';
 import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
 import { AdvancedModePanel } from '@/components/AdvancedModePanel';
 import type { GenerationStrategy } from '@/lib/api/numberblocks';
@@ -46,12 +46,12 @@ export function ScrapeControls({
   const [endNumber, setEndNumber] = useState(20);
   const [isRangeMode, setIsRangeMode] = useState(false);
 
-  const handleSingleScrape = () => {
-    onScrape(singleNumber, singleNumber, strategy);
-  };
-
-  const handleRangeScrape = () => {
-    onScrape(startNumber, endNumber, strategy);
+  const handleScrape = () => {
+    if (isRangeMode) {
+      onScrape(startNumber, endNumber, strategy);
+    } else {
+      onScrape(singleNumber, singleNumber, strategy);
+    }
   };
 
   const handleSingleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,136 +59,134 @@ export function ScrapeControls({
     if (value >= 0 && value <= 9999999) setSingleNumber(value);
   };
 
-  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFormattedNumber(e.target.value);
-    if (value >= 0 && value <= 9999999) setStartNumber(value);
-  };
-
-  const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFormattedNumber(e.target.value);
-    if (value >= 0 && value <= 9999999) setEndNumber(value);
-  };
-
   const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
     <div className="space-y-6 bg-card p-6 sm:p-8 rounded-3xl shadow-lg border-4 border-primary/20">
-      {/* Single Number Mode (Default) */}
-      <div className="flex flex-wrap gap-4 items-end justify-center">
-        <div className="space-y-3">
-          <Label htmlFor="single" className="text-lg font-semibold flex items-center gap-2">
-            <span className="text-2xl">🔢</span> Which Numberblock?
-          </Label>
-          <Input
-            id="single"
-            type="text"
-            inputMode="numeric"
-            value={formatNumber(singleNumber)}
-            onChange={handleSingleChange}
-            className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
-            disabled={isLoading}
-            placeholder="1"
-          />
+      <Tabs defaultValue="simple" className="w-full">
+        {/* Subtle mode toggle — tucked in the corner */}
+        <div className="flex justify-end mb-4">
+          <TabsList className="h-8 bg-muted/50 p-0.5 rounded-full">
+            <TabsTrigger
+              value="simple"
+              className="text-xs px-3 h-7 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              Simple
+            </TabsTrigger>
+            <TabsTrigger
+              value="advanced"
+              className="text-xs px-3 h-7 rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              Advanced
+            </TabsTrigger>
+          </TabsList>
         </div>
-        
-        {isLoading ? (
-          <Button
-            onClick={onStop}
-            variant="destructive"
-            className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg"
-          >
-            <Square className="mr-2 h-6 w-6" />
-            Stop! 🛑
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSingleScrape}
-            disabled={singleNumber < 1}
-            className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-primary hover:bg-primary/90"
-          >
-            <Sparkles className="mr-2 h-6 w-6" />
-            Find It! ✨
-          </Button>
-        )}
-      </div>
 
-      {/* Range Mode (Hidden by default) */}
-      <Collapsible open={isRangeMode} onOpenChange={setIsRangeMode}>
-        <CollapsibleTrigger asChild>
-          <Button
-            variant="ghost"
-            className="w-full flex items-center justify-center gap-2 text-muted-foreground hover:text-primary text-lg py-3 rounded-2xl"
-            disabled={isLoading}
-          >
-            <span>🌈 Find Many Numberblocks</span>
-            <ChevronDown className={`h-5 w-5 transition-transform ${isRangeMode ? 'rotate-180' : ''}`} />
-          </Button>
-        </CollapsibleTrigger>
-        
-        <CollapsibleContent className="pt-4">
-          <div className="bg-muted/30 p-4 sm:p-6 rounded-2xl space-y-4">
-            <div className="flex flex-wrap gap-4 items-end justify-center">
-              <div className="space-y-3">
-                <Label htmlFor="start" className="text-lg font-semibold flex items-center gap-2">
-                  <span className="text-2xl">1️⃣</span> From
-                </Label>
-                <Input
-                  id="start"
-                  type="text"
-                  inputMode="numeric"
-                  value={formatNumber(startNumber)}
-                  onChange={handleStartChange}
-                  className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
-                  disabled={isLoading}
-                />
-              </div>
-              
-              <div className="text-4xl font-bold text-primary hidden sm:block">➡️</div>
-              
-              <div className="space-y-3">
-                <Label htmlFor="end" className="text-lg font-semibold flex items-center gap-2">
-                  <span className="text-2xl">🔟</span> To
-                </Label>
-                <Input
-                  id="end"
-                  type="text"
-                  inputMode="numeric"
-                  value={formatNumber(endNumber)}
-                  onChange={handleEndChange}
-                  className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
-                  disabled={isLoading}
-                />
-              </div>
-              
-              {!isLoading && (
-                <Button
-                  onClick={handleRangeScrape}
-                  disabled={startNumber > endNumber}
-                  className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-secondary hover:bg-secondary/90"
-                >
-                  <Sparkles className="mr-2 h-6 w-6" />
-                  Find All! 🌈
-                </Button>
-              )}
+        {/* ─── Simple Mode ─── */}
+        <TabsContent value="simple" className="mt-0 space-y-4">
+          <div className="flex flex-wrap gap-4 items-end justify-center">
+            <div className="space-y-3">
+              <Label htmlFor="single" className="text-lg font-semibold flex items-center gap-2">
+                <span className="text-2xl">🔢</span> Which Numberblock?
+              </Label>
+              <Input
+                id="single"
+                type="text"
+                inputMode="numeric"
+                value={formatNumber(singleNumber)}
+                onChange={handleSingleChange}
+                className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
+                disabled={isLoading}
+                placeholder="1"
+              />
             </div>
+
+            {isLoading ? (
+              <Button
+                onClick={onStop}
+                variant="destructive"
+                className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg"
+              >
+                <Square className="mr-2 h-6 w-6" />
+                Stop! 🛑
+              </Button>
+            ) : (
+              <Button
+                onClick={() => onScrape(singleNumber, singleNumber, strategy)}
+                disabled={singleNumber < 1}
+                className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-primary hover:bg-primary/90"
+              >
+                <Sparkles className="mr-2 h-6 w-6" />
+                Find It! ✨
+              </Button>
+            )}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+        </TabsContent>
 
-      {/* Advanced Mode — gear icon opens bottom sheet */}
-      <div className="flex justify-center">
-        <AdvancedModePanel strategy={strategy} onStrategyChange={onStrategyChange} disabled={isLoading} />
-      </div>
+        {/* ─── Advanced Mode ─── */}
+        <TabsContent value="advanced" className="mt-0 space-y-5">
+          <div className="flex flex-wrap gap-4 items-end justify-center">
+            <div className="space-y-3">
+              <Label htmlFor="single-adv" className="text-lg font-semibold flex items-center gap-2">
+                <span className="text-2xl">🔢</span> Which Numberblock?
+              </Label>
+              <Input
+                id="single-adv"
+                type="text"
+                inputMode="numeric"
+                value={formatNumber(singleNumber)}
+                onChange={handleSingleChange}
+                className="w-full min-w-[5rem] max-w-[10rem] h-14 text-xl sm:text-2xl font-bold text-center rounded-2xl border-3 border-primary/30 focus:border-primary"
+                disabled={isLoading}
+                placeholder="1"
+              />
+            </div>
 
+            {isLoading ? (
+              <Button
+                onClick={onStop}
+                variant="destructive"
+                className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg"
+              >
+                <Square className="mr-2 h-6 w-6" />
+                Stop! 🛑
+              </Button>
+            ) : (
+              <Button
+                onClick={handleScrape}
+                disabled={isRangeMode ? startNumber > endNumber : singleNumber < 1}
+                className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-primary hover:bg-primary/90"
+              >
+                <Sparkles className="mr-2 h-6 w-6" />
+                {isRangeMode ? 'Find All! 🌈' : 'Find It! ✨'}
+              </Button>
+            )}
+          </div>
+
+          <AdvancedModePanel
+            strategy={strategy}
+            onStrategyChange={onStrategyChange}
+            disabled={isLoading}
+            isRangeMode={isRangeMode}
+            onRangeModeChange={setIsRangeMode}
+            startNumber={startNumber}
+            endNumber={endNumber}
+            onStartChange={setStartNumber}
+            onEndChange={setEndNumber}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Progress */}
       {isLoading && progress.total > 0 && (
         <div className="space-y-3 bg-muted/50 p-4 rounded-2xl">
           <div className="flex justify-between text-lg font-semibold">
             <span className="flex items-center gap-2">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              {progress.phase === 'checking' 
-                ? 'Checking for saved pictures... 📂' 
-                : progress.phase === 'generating' 
-                  ? 'Creating your Numberblock... ✨🎨' 
+              {progress.phase === 'checking'
+                ? 'Checking for saved pictures... 📂'
+                : progress.phase === 'generating'
+                  ? 'Creating your Numberblock... ✨🎨'
                   : 'Looking for Numberblocks... 🔍'}
             </span>
             {progress.total > 1 && (
@@ -201,6 +199,7 @@ export function ScrapeControls({
         </div>
       )}
 
+      {/* Download */}
       {hasImages && !isLoading && (
         <Button
           onClick={onDownload}
