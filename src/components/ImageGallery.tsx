@@ -19,7 +19,15 @@ function isCachedUrl(url: string): boolean {
   return url.includes('supabase.co/storage');
 }
 
-function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean }) {
+function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }): { label: string; emoji: string; className: string } | null {
+  if (img.svgGenerated) return { label: 'SVG', emoji: '📐', className: 'bg-accent/90 text-accent-foreground' };
+  if (img.aiGenerated) return { label: 'AI', emoji: '🎨', className: 'bg-secondary/90 text-secondary-foreground' };
+  if (img.composed) return { label: 'Composed', emoji: '🧩', className: 'bg-primary/90 text-primary-foreground' };
+  if (img.cached) return { label: 'Wiki', emoji: '📚', className: 'bg-muted text-muted-foreground' };
+  return null;
+}
+
+function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -99,17 +107,16 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed }: { ima
         alt={`Numberblock ${number}`}
         className="w-full h-full object-contain p-2"
       />
-      {aiGenerated && (
-        <div className="absolute top-1 right-1 bg-secondary/90 text-secondary-foreground text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-          <Wand2 className="h-3 w-3" />
-          AI
-        </div>
-      )}
-      {composed && (
-        <div className="absolute top-1 right-1 bg-primary/90 text-primary-foreground text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-          🧩 Composed
-        </div>
-      )}
+      {(() => {
+        const badge = getStrategyBadge({ cached, aiGenerated, composed, svgGenerated });
+        if (!badge) return null;
+        return (
+          <div className={`absolute top-1 right-1 text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${badge.className}`}>
+            <span>{badge.emoji}</span>
+            {badge.label}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -135,7 +142,7 @@ function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating
       <div className="aspect-square relative bg-gradient-to-br from-muted/50 to-muted flex items-center justify-center">
         {img.imageUrl ? (
           <>
-            <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} composed={img.composed} />
+            <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} composed={img.composed} svgGenerated={img.svgGenerated} />
             {/* Regenerate button overlay */}
             <Button
               size="icon"
