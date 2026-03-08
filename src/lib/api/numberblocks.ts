@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
-export type GenerationStrategy = 'auto' | 'svg' | 'ai-openai' | 'ai-gemini' | 'wiki-only';
+export type GenerationStrategy = 'auto' | 'svg' | 'compose' | 'ai-openai' | 'ai-gemini' | 'wiki-only';
 
 export interface NumberImage {
   number: number;
@@ -37,6 +37,7 @@ export const numberblocksApi = {
     if (isSingleNumber && strategy !== 'auto' && strategy !== 'wiki-only') {
       let functionName: string;
       if (strategy === 'svg') functionName = 'generate-svg-numberblock';
+      else if (strategy === 'compose') functionName = 'compose-numberblock';
       else if (strategy === 'ai-gemini') functionName = 'generate-gemini-numberblock';
       else functionName = 'generate-numberblock'; // ai-openai
 

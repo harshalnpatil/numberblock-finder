@@ -175,8 +175,10 @@ export function ScrapeControls({
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Advanced Mode */}
-      <AdvancedModePanel strategy={strategy} onStrategyChange={onStrategyChange} disabled={isLoading} />
+      {/* Advanced Mode — gear icon opens bottom sheet */}
+      <div className="flex justify-center">
+        <AdvancedModePanel strategy={strategy} onStrategyChange={onStrategyChange} disabled={isLoading} />
+      </div>
 
       {isLoading && progress.total > 0 && (
         <div className="space-y-3 bg-muted/50 p-4 rounded-2xl">

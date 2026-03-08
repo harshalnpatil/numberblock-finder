@@ -1,44 +1,57 @@
 
 
-# Plan: Fix Advanced Mode + Bottom Sheet UI
+# Fix: Wiki Disambiguation Pages Breaking Scraping
 
-## Issues to Fix
+## Root Cause
 
-1. **Auto description is wrong** — currently says "Wiki → Compose → DALL-E" but should NOT include programmatic SVG. The description is already correct ("Wiki → Compose → DALL-E"), so no change needed there. But the `auto` strategy in the edge function must be verified to not route through SVG.
+The `numberToWord()` function generates URLs like `/wiki/Eighteen`, but the Numberblocks wiki uses **disambiguation pages** for some numbers. When you visit `/wiki/Eighteen`, it lands on a disambiguation page (no character image), while the actual character page lives at `/wiki/Eighteen_(character)`.
 
-2. **UI change** — Replace the current inline toggle + radio panel with a **gear icon button** that opens a **Drawer (bottom sheet)** containing all strategy options.
+Some numbers (like Five, Twenty) auto-redirect from the base name to the character page, but others (like Eighteen) show a disambiguation page instead. This is inconsistent across the wiki and we cannot predict which numbers have disambiguation pages.
 
-## Additional Strategy Options to Add
+## Fix
 
-- **Compose Only** — Skip wiki scrape, go straight to the compose pipeline (overlay number on base template). Useful for quick deterministic results without full AI.
+Update `scrapeAndCacheNumber()` in `supabase/functions/scrape-numberblocks/index.ts` to implement a **two-attempt strategy**:
+
+1. **First attempt**: Scrape the current URL (`/wiki/Eighteen`) as-is
+2. **If no image found**: Check if the HTML contains disambiguation markers (e.g., "may refer to", "disambiguation" in the page)
+3. **If disambiguation detected**: Re-scrape using the `_(character)` suffix URL (`/wiki/Eighteen_(character)`)
+
+This costs one extra Firecrawl call only when a disambiguation page is hit -- which is a small subset of numbers.
+
+### Alternative considered
+We could always try `_(character)` first, but that would break numbers where the character page IS the base page (no `_(character)` variant exists). The fallback approach is safer.
 
 ## Changes
 
-### 1. `src/components/AdvancedModePanel.tsx` → Rewrite as Drawer
-
-- Replace `Collapsible` + `Switch` with a small gear icon `Button` that opens a `Drawer` (from `vaul` / shadcn `drawer.tsx`).
-- Inside the drawer: keep the same RadioGroup with strategies.
-- Add a `compose` strategy option: "Compose Only — Number overlay on template, no AI."
-- Update `auto` description to clearly say: "Wiki scrape → Compose → DALL-E fallback (no SVG)".
-
-### 2. `src/lib/api/numberblocks.ts`
-
-- Add `'compose'` to `GenerationStrategy` type.
-- Route `compose` to `compose-numberblock` edge function.
-
-### 3. `src/components/ScrapeControls.tsx`
-
-- Replace `<AdvancedModePanel>` inline rendering with just the gear button + drawer trigger. The drawer is self-contained.
-
-### 4. Edge function verification
-
-- Confirm `scrape-numberblocks` `auto` path does NOT call `generate-svg-numberblock`. (It currently doesn't — it falls through to `generate-numberblock` which is DALL-E. No change needed.)
-
-## Files
-
 | File | Change |
 |------|--------|
-| `src/components/AdvancedModePanel.tsx` | Rewrite: gear icon → Drawer with radio options, add `compose` strategy |
-| `src/lib/api/numberblocks.ts` | Add `compose` to `GenerationStrategy`, add routing |
-| `src/components/ScrapeControls.tsx` | Minor: adjust how AdvancedModePanel is rendered |
+| `supabase/functions/scrape-numberblocks/index.ts` | In `scrapeAndCacheNumber()`, after the first scrape, detect disambiguation pages and retry with `_(character)` suffix |
+
+### Detection Logic
+The disambiguation page HTML contains telltale signs: the text "may refer to" and links to `_(character)`. We check for these in the scraped HTML before retrying.
+
+### Code Change (in `scrapeAndCacheNumber`, around line 628-631)
+After `extractInfoboxImage` returns null, add:
+```typescript
+// If no image found, check if this is a disambiguation page
+if (!originalImageUrl && isDisambiguationPage(html)) {
+  // Retry with _(character) suffix
+  const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
+  console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
+  
+  const retryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', { ... });
+  const retryData = await retryResponse.json();
+  const retryHtml = retryData.data?.html || '';
+  originalImageUrl = extractInfoboxImage(retryHtml, num);
+}
+```
+
+Add helper:
+```typescript
+function isDisambiguationPage(html: string): boolean {
+  return html.includes('may refer to') || 
+         html.includes('disambiguation') || 
+         html.includes('Disambiguations');
+}
+```
 
