@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { numberblocksApi, NumberImage, GenerationStrategy } from '@/lib/api/numberblocks';
+import { numberblocksApi, NumberImage, GenerationStrategy, ALL_STRATEGIES } from '@/lib/api/numberblocks';
 import { supabase } from '@/integrations/supabase/client';
+import type { CompareItem } from '@/components/CompareStrip';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
