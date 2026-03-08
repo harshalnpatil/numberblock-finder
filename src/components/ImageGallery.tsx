@@ -110,7 +110,7 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod,
         className="w-full h-full object-contain p-2"
       />
       {(() => {
-        const badge = getStrategyBadge({ cached, aiGenerated, composed, svgGenerated });
+        const badge = getStrategyBadge({ cached, aiGenerated, generationMethod, composed, svgGenerated });
         if (!badge) return null;
         return (
           <div className={`absolute top-1 right-1 text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${badge.className}`}>
