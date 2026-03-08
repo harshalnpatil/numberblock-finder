@@ -119,7 +119,10 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGene
       })()}
     </div>
   );
-}
+
+interface ImageCardProps {
+  img: NumberImage;
+  onGenerate?: (number: number) => void;
   onRegenerate?: (number: number) => void;
   isGenerating?: boolean;
   isRegenerating?: boolean;
