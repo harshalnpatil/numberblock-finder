@@ -625,9 +625,11 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
     }
 
     const html = data.data?.html || data.html || '';
-    let originalImageUrl = extractInfoboxImage(html, num);
+    // Step 1: Try priorities 1-2 only (exact number match + infobox) on main page
+    let originalImageUrl = extractInfoboxImage(html, num, true);
+    let lastHtml = html;
     
-    // If no image found, check if this is a disambiguation page and retry with _(character) suffix
+    // Step 2: If no image found, check disambiguation and retry with _(character) suffix
     if (!originalImageUrl && isDisambiguationPage(html)) {
       const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
       console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
@@ -648,9 +650,61 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
       const retryData = await retryResponse.json();
       if (retryResponse.ok) {
         const retryHtml = retryData.data?.html || retryData.html || '';
-        originalImageUrl = extractInfoboxImage(retryHtml, num);
+        lastHtml = retryHtml;
+        originalImageUrl = extractInfoboxImage(retryHtml, num, true);
       } else {
         console.error(`Firecrawl retry error for ${num} _(character):`, retryData);
+      }
+    }
+    
+    // Step 3: If still no image, try the Gallery subpage
+    if (!originalImageUrl) {
+      // Determine the base page URL we ended up on (could be base or _(character))
+      const baseWord = encodeURIComponent(numberWord);
+      const galleryUrls = [
+        `https://numberblocks.fandom.com/wiki/${baseWord}_(character)/Gallery`,
+        `https://numberblocks.fandom.com/wiki/${baseWord}/Gallery`,
+      ];
+      
+      for (const galleryUrl of galleryUrls) {
+        console.log(`Trying Gallery page for ${num}: ${galleryUrl}`);
+        try {
+          const galleryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: galleryUrl,
+              formats: ['html'],
+              onlyMainContent: false,
+            }),
+          });
+          
+          const galleryData = await galleryResponse.json();
+          if (galleryResponse.ok) {
+            const galleryHtml = galleryData.data?.html || galleryData.html || '';
+            if (galleryHtml.length > 500) {
+              // Extract first valid character image from gallery
+              originalImageUrl = extractFirstGalleryImage(galleryHtml, num);
+              if (originalImageUrl) {
+                console.log(`Found image from Gallery page for ${num}`);
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Gallery scrape error for ${num}:`, err);
+        }
+      }
+    }
+    
+    // Step 4: Fall back to Priority 3 (filename contains number word) on original HTML
+    if (!originalImageUrl) {
+      originalImageUrl = extractInfoboxImageFallback(lastHtml, num);
+      if (originalImageUrl) {
+        console.log(`Found image via filename fallback for ${num}`);
       }
     }
     
