@@ -119,6 +119,7 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGene
       })()}
     </div>
   );
+}
 
 interface ImageCardProps {
   img: NumberImage;
