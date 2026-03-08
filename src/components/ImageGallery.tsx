@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { NumberImage, numberblocksApi, GenerationMethod } from '@/lib/api/numberblocks';
+import { NumberImage, numberblocksApi, GenerationMethod, GenerationStrategy } from '@/lib/api/numberblocks';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlertCircle, ImageOff, Loader2, Database, Sparkles, Wand2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -15,7 +16,6 @@ interface ImageGalleryProps {
 const imageCache = new Map<string, string>();
 
 function isCachedUrl(url: string): boolean {
-  // Check if URL is from our Supabase storage (already cached)
   return url.includes('supabase.co/storage');
 }
 
@@ -29,6 +29,15 @@ function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; genera
   return null;
 }
 
+const REGEN_STRATEGIES: { value: GenerationStrategy; label: string; emoji: string }[] = [
+  { value: 'auto', label: 'Auto', emoji: '🔄' },
+  { value: 'wiki-only', label: 'Wiki', emoji: '📚' },
+  { value: 'svg', label: 'SVG', emoji: '📐' },
+  { value: 'compose', label: 'Compose', emoji: '🧩' },
+  { value: 'ai-openai', label: 'OpenAI', emoji: '🎨' },
+  { value: 'ai-gemini', label: 'Gemini', emoji: '✨' },
+];
+
 function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod, composed, svgGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; generationMethod?: GenerationMethod; composed?: boolean; svgGenerated?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,14 +47,12 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod,
     let cancelled = false;
 
     async function loadImage() {
-      // If it's a cached URL from our storage, use it directly
       if (isCachedUrl(imageUrl)) {
         setSrc(imageUrl);
         setLoading(false);
         return;
       }
 
-      // Check local cache
       if (imageCache.has(imageUrl)) {
         setSrc(imageCache.get(imageUrl)!);
         setLoading(false);
@@ -65,7 +72,6 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod,
           return;
         }
 
-        // Create data URL from base64
         const dataUrl = `data:${data.contentType};base64,${data.data}`;
         imageCache.set(imageUrl, dataUrl);
         setSrc(dataUrl);
@@ -126,12 +132,19 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod,
 interface ImageCardProps {
   img: NumberImage;
   onGenerate?: (number: number) => void;
-  onRegenerate?: (number: number) => void;
+  onRegenerate?: (number: number, strategy: GenerationStrategy) => void;
   isGenerating?: boolean;
   isRegenerating?: boolean;
 }
 
 function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating }: ImageCardProps) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
+  const handleStrategyPick = (strategy: GenerationStrategy) => {
+    setPopoverOpen(false);
+    onRegenerate?.(img.number, strategy);
+  };
+
   return (
     <Card 
       className={`group overflow-hidden rounded-3xl border-4 transition-all hover:scale-105 hover:shadow-xl
@@ -145,25 +158,46 @@ function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating
         {img.imageUrl ? (
           <>
             <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} generationMethod={img.generationMethod} composed={img.composed} svgGenerated={img.svgGenerated} />
-            {/* Regenerate button overlay */}
-            <Button
-              size="icon"
-              variant="secondary"
-              className="absolute bottom-1 right-1 h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity shadow-md"
-              style={{ opacity: isRegenerating ? 1 : undefined }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onRegenerate?.(img.number);
-              }}
-              disabled={isRegenerating}
-              title="Regenerate image"
-            >
-              {isRegenerating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-            </Button>
+            {/* Regenerate popover */}
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="absolute bottom-1 right-1 h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity shadow-md"
+                  style={{ opacity: isRegenerating || popoverOpen ? 1 : undefined }}
+                  disabled={isRegenerating}
+                  title="Regenerate image"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {isRegenerating ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                side="top" 
+                align="end" 
+                className="w-40 p-1.5 rounded-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
+                  Regenerate with
+                </p>
+                {REGEN_STRATEGIES.map((s) => (
+                  <button
+                    key={s.value}
+                    onClick={() => handleStrategyPick(s.value)}
+                    className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-lg hover:bg-muted/60 transition-colors text-left"
+                  >
+                    <span>{s.emoji}</span>
+                    <span className="font-medium">{s.label}</span>
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
           </>
         ) : (
           <div className="flex flex-col items-center gap-2 text-muted-foreground p-4">
@@ -250,18 +284,20 @@ export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
     }
   };
 
-  const handleRegenerate = async (number: number) => {
+  const handleRegenerate = async (number: number, strategy: GenerationStrategy) => {
     setRegeneratingNumbers(prev => new Set(prev).add(number));
     
     try {
-      const response = await numberblocksApi.regenerate(number);
+      // Use the full scrapeImages API which routes to the correct edge function
+      const response = await numberblocksApi.scrapeImages(number, number, strategy);
       
-      if (response.success && response.imageUrl) {
+      if (response.success && response.data?.[0]?.imageUrl) {
+        const strategyLabel = REGEN_STRATEGIES.find(s => s.value === strategy)?.label || strategy;
         toast({
-          title: 'Regenerated! 🔄',
+          title: `Regenerated with ${strategyLabel}! 🔄`,
           description: `New image for Numberblock ${number.toLocaleString()}!`,
         });
-        onImageUpdate?.(number, response.imageUrl);
+        onImageUpdate?.(number, response.data[0].imageUrl);
       } else {
         toast({
           title: 'Oops!',
