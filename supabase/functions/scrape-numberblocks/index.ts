@@ -380,6 +380,7 @@ Deno.serve(async (req) => {
     const startNumber = body.startNumber ?? 1;
     const endNumber = body.endNumber ?? 20;
     const isSingleNumber = body.isSingleNumber ?? (startNumber === endNumber);
+    const strategy = body.strategy ?? 'auto';
 
     // Input validation
     const MAX_RANGE = 50;
