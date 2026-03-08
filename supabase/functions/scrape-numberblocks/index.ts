@@ -813,7 +813,7 @@ function isValidCharacterImage(imageUrl: string): boolean {
   return true;
 }
 
-function extractInfoboxImage(html: string, num: number): string | null {
+function extractInfoboxImage(html: string, num: number, skipFallback: boolean = false): string | null {
   const numStr = num.toString();
   const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
   
@@ -858,23 +858,58 @@ function extractInfoboxImage(html: string, num: number): string | null {
       }
     }
     
-    // Priority 3: Fallback for small numbers - check if filename contains number word
-    for (const match of allImgMatches) {
-      let imageUrl = match[1];
-      
-      if (!isValidCharacterImage(imageUrl)) {
-        continue;
-      }
-      
-      const urlLower = imageUrl.toLowerCase();
-      if (urlLower.includes(numberName)) {
-        imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-        imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-        return imageUrl;
-      }
+    // Priority 3: Fallback - check if filename contains number word (fan art territory)
+    // Only run if skipFallback is false
+    if (!skipFallback) {
+      return extractInfoboxImageFallback(html, num);
     }
   }
 
+  return null;
+}
+
+// Separate fallback function: Priority 3 - filename contains number word
+function extractInfoboxImageFallback(html: string, num: number): string | null {
+  if (num > 1000) return null;
+  
+  const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
+  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
+  
+  for (const match of allImgMatches) {
+    let imageUrl = match[1];
+    
+    if (!isValidCharacterImage(imageUrl)) {
+      continue;
+    }
+    
+    const urlLower = imageUrl.toLowerCase();
+    if (urlLower.includes(numberName)) {
+      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+      return imageUrl;
+    }
+  }
+  
+  return null;
+}
+
+// Extract first valid character image from a Gallery page
+function extractFirstGalleryImage(html: string, num: number): string | null {
+  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
+  
+  for (const match of allImgMatches) {
+    let imageUrl = match[1];
+    
+    if (!isValidCharacterImage(imageUrl)) {
+      continue;
+    }
+    
+    // Gallery pages contain many images - take the first valid one (usually the main character image)
+    imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+    imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+    return imageUrl;
+  }
+  
   return null;
 }
 
