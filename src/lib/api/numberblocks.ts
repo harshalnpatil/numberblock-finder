@@ -71,6 +71,12 @@ export const numberblocksApi = {
       }
 
       if (data?.success && data?.imageUrl) {
+        // Determine generationMethod from the strategy or from the response
+        let generationMethod: GenerationMethod = data.generationMethod;
+        if (!generationMethod) {
+          if (strategy === 'ai-openai') generationMethod = 'openai';
+          else if (strategy === 'ai-gemini') generationMethod = 'gemini';
+        }
         return {
           success: true,
           data: [{
@@ -78,6 +84,7 @@ export const numberblocksApi = {
             imageUrl: data.imageUrl,
             pageUrl: `https://numberblocks.fandom.com/wiki/${startNumber}`,
             aiGenerated: data.aiGenerated || false,
+            generationMethod,
             svgGenerated: data.svgGenerated || false,
           }],
         };
