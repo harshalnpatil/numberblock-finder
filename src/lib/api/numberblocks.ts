@@ -140,4 +140,13 @@ export const numberblocksApi = {
     
     return data;
   },
+
+  async compareAllStrategies(number: number): Promise<{ strategy: GenerationStrategy; result: ScrapeResponse }[]> {
+    const strategies = ALL_STRATEGIES;
+    const promises = strategies.map(async (s) => {
+      const result = await numberblocksApi.scrapeImages(number, number, s.value);
+      return { strategy: s.value, result };
+    });
+    return Promise.all(promises);
+  },
 };
