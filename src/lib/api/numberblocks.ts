@@ -46,6 +46,7 @@ export interface GenerateResponse {
   error?: string;
   imageUrl?: string;
   aiGenerated?: boolean;
+  generationMethod?: GenerationMethod;
   svgGenerated?: boolean;
 }
 
