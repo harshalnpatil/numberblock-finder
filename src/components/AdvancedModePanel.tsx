@@ -1,98 +1,127 @@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/components/ui/drawer';
-import { Settings2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import type { GenerationStrategy } from '@/lib/api/numberblocks';
 
 interface AdvancedModePanelProps {
   strategy: GenerationStrategy;
   onStrategyChange: (strategy: GenerationStrategy) => void;
   disabled?: boolean;
+  isRangeMode: boolean;
+  onRangeModeChange: (val: boolean) => void;
+  startNumber: number;
+  endNumber: number;
+  onStartChange: (val: number) => void;
+  onEndChange: (val: number) => void;
 }
 
 const STRATEGIES: { value: GenerationStrategy; label: string; description: string; emoji: string }[] = [
-  { value: 'auto', label: 'Auto', description: 'Wiki scrape → Compose → DALL-E fallback', emoji: '🔄' },
-  { value: 'svg', label: 'Programmatic SVG', description: 'Deterministic, mathematically correct blocks', emoji: '📐' },
-  { value: 'compose', label: 'Compose Only', description: 'Number overlay on template, no AI', emoji: '🧩' },
-  { value: 'ai-openai', label: 'AI – OpenAI', description: 'DALL-E 3 image generation', emoji: '🎨' },
-  { value: 'ai-gemini', label: 'AI – Gemini', description: 'Google Gemini image generation', emoji: '✨' },
-  { value: 'wiki-only', label: 'Wiki Only', description: 'Scrape only, no AI fallback', emoji: '📚' },
+  { value: 'auto', label: 'Auto', description: 'Wiki → Compose → DALL-E fallback', emoji: '🔄' },
+  { value: 'svg', label: 'SVG', description: 'Deterministic math blocks', emoji: '📐' },
+  { value: 'compose', label: 'Compose', description: 'Number overlay, no AI', emoji: '🧩' },
+  { value: 'ai-openai', label: 'OpenAI', description: 'DALL-E 3 generation', emoji: '🎨' },
+  { value: 'ai-gemini', label: 'Gemini', description: 'Google Gemini generation', emoji: '✨' },
+  { value: 'wiki-only', label: 'Wiki Only', description: 'Scrape only, no fallback', emoji: '📚' },
 ];
 
-export function AdvancedModePanel({ strategy, onStrategyChange, disabled }: AdvancedModePanelProps) {
-  const currentStrategy = STRATEGIES.find((s) => s.value === strategy);
-
+export function AdvancedModePanel({
+  strategy,
+  onStrategyChange,
+  disabled,
+  isRangeMode,
+  onRangeModeChange,
+  startNumber,
+  endNumber,
+  onStartChange,
+  onEndChange,
+}: AdvancedModePanelProps) {
   return (
-    <Drawer>
-      <DrawerTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
+    <div className="space-y-5 animate-in fade-in-0 slide-in-from-top-2 duration-300">
+      {/* Strategy Selection */}
+      <div className="space-y-3">
+        <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          🔧 Generation Strategy
+        </Label>
+        <RadioGroup
+          value={strategy}
+          onValueChange={(val) => onStrategyChange(val as GenerationStrategy)}
+          className="grid grid-cols-2 sm:grid-cols-3 gap-2"
           disabled={disabled}
-          className="text-muted-foreground hover:text-primary gap-2"
         >
-          <Settings2 className="h-4 w-4" />
-          <span className="text-sm">
-            {strategy === 'auto' ? 'Advanced' : `⚙️ ${currentStrategy?.label}`}
-          </span>
-        </Button>
-      </DrawerTrigger>
-      <DrawerContent>
-        <div className="mx-auto w-full max-w-md">
-          <DrawerHeader>
-            <DrawerTitle className="flex items-center gap-2 text-lg">
-              🔧 Generation Strategy
-            </DrawerTitle>
-            <DrawerDescription>
-              Choose how Numberblock images are created
-            </DrawerDescription>
-          </DrawerHeader>
-
-          <div className="px-4 pb-2">
-            <RadioGroup
-              value={strategy}
-              onValueChange={(val) => onStrategyChange(val as GenerationStrategy)}
-              className="space-y-1"
+          {STRATEGIES.map((s) => (
+            <Label
+              key={s.value}
+              htmlFor={`strat-${s.value}`}
+              className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all
+                ${strategy === s.value
+                  ? 'border-primary bg-primary/10 shadow-sm'
+                  : 'border-border hover:border-primary/40 hover:bg-muted/40'
+                }
+                ${disabled ? 'opacity-50 pointer-events-none' : ''}
+              `}
             >
-              {STRATEGIES.map((s) => (
-                <div
-                  key={s.value}
-                  className="flex items-start gap-3 p-3 rounded-xl hover:bg-muted/60 transition-colors"
-                >
-                  <RadioGroupItem value={s.value} id={`strategy-${s.value}`} className="mt-0.5" />
-                  <Label htmlFor={`strategy-${s.value}`} className="cursor-pointer flex-1">
-                    <span className="flex items-center gap-2 text-sm font-medium">
-                      <span>{s.emoji}</span>
-                      {s.label}
-                    </span>
-                    <span className="text-xs text-muted-foreground block mt-0.5">
-                      {s.description}
-                    </span>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
+              <RadioGroupItem value={s.value} id={`strat-${s.value}`} className="sr-only" />
+              <span className="text-lg">{s.emoji}</span>
+              <div className="min-w-0">
+                <span className="text-sm font-medium block">{s.label}</span>
+                <span className="text-[10px] text-muted-foreground block leading-tight truncate">
+                  {s.description}
+                </span>
+              </div>
+            </Label>
+          ))}
+        </RadioGroup>
+      </div>
 
-          <DrawerFooter>
-            <DrawerClose asChild>
-              <Button variant="outline" className="rounded-2xl">
-                Done
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
+      <Separator />
+
+      {/* Range Mode Toggle */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            🌈 Batch Range
+          </Label>
+          <Switch
+            checked={isRangeMode}
+            onCheckedChange={onRangeModeChange}
+            disabled={disabled}
+          />
         </div>
-      </DrawerContent>
-    </Drawer>
+
+        {isRangeMode && (
+          <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+            <div className="flex items-center justify-between text-sm">
+              <Badge variant="secondary" className="font-mono text-base px-3 py-1">
+                {startNumber}
+              </Badge>
+              <span className="text-muted-foreground">→</span>
+              <Badge variant="secondary" className="font-mono text-base px-3 py-1">
+                {endNumber}
+              </Badge>
+            </div>
+            <div className="px-1">
+              <Slider
+                min={1}
+                max={100}
+                step={1}
+                value={[startNumber, endNumber]}
+                onValueChange={([s, e]) => {
+                  onStartChange(s);
+                  onEndChange(e);
+                }}
+                disabled={disabled}
+                className="py-2"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Will generate <span className="font-semibold text-foreground">{endNumber - startNumber + 1}</span> images
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
