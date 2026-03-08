@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { numberblocksApi, NumberImage } from '@/lib/api/numberblocks';
+import { numberblocksApi, NumberImage, GenerationStrategy } from '@/lib/api/numberblocks';
 import { supabase } from '@/integrations/supabase/client';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -32,7 +32,7 @@ export function useNumberblocksScraper() {
   // Ref to track cancellation
   const cancelledRef = useRef(false);
 
-  const scrapeImages = useCallback(async (startNumber: number, endNumber: number) => {
+  const scrapeImages = useCallback(async (startNumber: number, endNumber: number, strategy: GenerationStrategy = 'auto') => {
     setIsLoading(true);
     setImages([]);
     cancelledRef.current = false;
@@ -47,51 +47,63 @@ export function useNumberblocksScraper() {
     const batchSize = 5; // Process 5 at a time for progress updates
     
     try {
-      for (let i = startNumber; i <= endNumber; i += batchSize) {
-        // Check if cancelled
-        if (cancelledRef.current) {
-          toast({
-            title: 'Scraping stopped',
-            description: `Stopped at ${allResults.length} images`,
-          });
-          break;
+      // For direct generation strategies on single numbers, just call once
+      if (isSingleNumber && strategy !== 'auto' && strategy !== 'wiki-only') {
+        setProgress({ current: 0, total, phase: 'generating' });
+        const response = await numberblocksApi.scrapeImages(startNumber, endNumber, strategy);
+        if (response.success && response.data) {
+          allResults.push(...response.data);
+          setImages([...allResults]);
+        } else if (response.error) {
+          toast({ title: 'Error', description: response.error, variant: 'destructive' });
         }
-        
-        const batchEnd = Math.min(i + batchSize - 1, endNumber);
-        
-        // For single numbers, show generating phase since backend may auto-generate
-        if (isSingleNumber && i === startNumber) {
-          setProgress({ current: 0, total, phase: 'generating' });
-        }
-        
-        const response = await numberblocksApi.scrapeImages(i, batchEnd);
-        
-        // After first batch for range mode, switch to 'scraping' phase
-        if (!isSingleNumber) {
-          setProgress(prev => prev.phase === 'checking' ? { ...prev, phase: 'scraping' } : prev);
-        }
-        
-        // Check again after async call
-        if (cancelledRef.current) {
+      } else {
+        for (let i = startNumber; i <= endNumber; i += batchSize) {
+          // Check if cancelled
+          if (cancelledRef.current) {
+            toast({
+              title: 'Scraping stopped',
+              description: `Stopped at ${allResults.length} images`,
+            });
+            break;
+          }
+          
+          const batchEnd = Math.min(i + batchSize - 1, endNumber);
+          
+          // For single numbers, show generating phase since backend may auto-generate
+          if (isSingleNumber && i === startNumber) {
+            setProgress({ current: 0, total, phase: 'generating' });
+          }
+          
+          const response = await numberblocksApi.scrapeImages(i, batchEnd, strategy);
+          
+          // After first batch for range mode, switch to 'scraping' phase
+          if (!isSingleNumber) {
+            setProgress(prev => prev.phase === 'checking' ? { ...prev, phase: 'scraping' } : prev);
+          }
+          
+          // Check again after async call
+          if (cancelledRef.current) {
+            if (response.success && response.data) {
+              allResults.push(...response.data);
+              setImages([...allResults]);
+            }
+            toast({
+              title: 'Scraping stopped',
+              description: `Stopped at ${allResults.length} images`,
+            });
+            break;
+          }
+          
           if (response.success && response.data) {
             allResults.push(...response.data);
             setImages([...allResults]);
           }
-          toast({
-            title: 'Scraping stopped',
-            description: `Stopped at ${allResults.length} images`,
-          });
-          break;
+          
+          // Update progress
+          const completed = Math.min(batchEnd - startNumber + 1, total);
+          setProgress({ current: completed, total, phase: 'scraping' });
         }
-        
-        if (response.success && response.data) {
-          allResults.push(...response.data);
-          setImages([...allResults]);
-        }
-        
-        // Update progress
-        const completed = Math.min(batchEnd - startNumber + 1, total);
-        setProgress({ current: completed, total, phase: 'scraping' });
       }
       
       if (!cancelledRef.current) {
@@ -158,6 +170,8 @@ export function useNumberblocksScraper() {
           extension = 'gif';
         } else if (data.contentType?.includes('webp')) {
           extension = 'webp';
+        } else if (data.contentType?.includes('svg')) {
+          extension = 'svg';
         }
         
         // Save directly as image file
@@ -196,6 +210,8 @@ export function useNumberblocksScraper() {
               extension = 'gif';
             } else if (data.contentType?.includes('webp')) {
               extension = 'webp';
+            } else if (data.contentType?.includes('svg')) {
+              extension = 'svg';
             }
             
             zip.file(`${paddedNumber}.${extension}`, blob);

@@ -380,6 +380,7 @@ Deno.serve(async (req) => {
     const startNumber = body.startNumber ?? 1;
     const endNumber = body.endNumber ?? 20;
     const isSingleNumber = body.isSingleNumber ?? (startNumber === endNumber);
+    const strategy = body.strategy ?? 'auto';
 
     // Input validation
     const MAX_RANGE = 50;
@@ -515,8 +516,8 @@ Deno.serve(async (req) => {
       }
     }
     
-    // Auto-generate for single number if no image found
-    if (isSingleNumber) {
+    // Auto-generate for single number if no image found (skip if wiki-only strategy)
+    if (isSingleNumber && strategy !== 'wiki-only') {
       const singleResult = results.find(r => r.number === startNumber);
       if (singleResult && !singleResult.imageUrl && !singleResult.cached) {
         // For numbers > 10, try composition first

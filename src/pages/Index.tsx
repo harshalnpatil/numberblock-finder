@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { ScrapeControls } from '@/components/ScrapeControls';
 import { ImageGallery } from '@/components/ImageGallery';
 import { useNumberblocksScraper } from '@/hooks/useNumberblocksScraper';
+import type { GenerationStrategy } from '@/lib/api/numberblocks';
 
 const Index = () => {
+  const [strategy, setStrategy] = useState<GenerationStrategy>('auto');
   const {
     images,
     isLoading,
@@ -39,6 +42,8 @@ const Index = () => {
             hasImages={hasImages}
             imageCount={successfulImageCount}
             progress={progress}
+            strategy={strategy}
+            onStrategyChange={setStrategy}
           />
 
           <ImageGallery images={images} onImageUpdate={updateImage} />

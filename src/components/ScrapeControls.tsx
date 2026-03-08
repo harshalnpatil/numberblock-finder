@@ -6,9 +6,11 @@ import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Loader2, Download, Square, Sparkles, ChevronDown } from 'lucide-react';
 import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
+import { AdvancedModePanel } from '@/components/AdvancedModePanel';
+import type { GenerationStrategy } from '@/lib/api/numberblocks';
 
 interface ScrapeControlsProps {
-  onScrape: (start: number, end: number) => Promise<void>;
+  onScrape: (start: number, end: number, strategy: GenerationStrategy) => Promise<void>;
   onStop: () => void;
   onDownload: () => Promise<void>;
   isLoading: boolean;
@@ -16,14 +18,12 @@ interface ScrapeControlsProps {
   hasImages: boolean;
   imageCount: number;
   progress: ScrapeProgress;
+  strategy: GenerationStrategy;
+  onStrategyChange: (strategy: GenerationStrategy) => void;
 }
 
-// Format number with commas (e.g., 1234567 -> 1,234,567)
-const formatNumber = (num: number): string => {
-  return num.toLocaleString();
-};
+const formatNumber = (num: number): string => num.toLocaleString();
 
-// Parse formatted string back to number
 const parseFormattedNumber = (str: string): number => {
   const cleaned = str.replace(/,/g, '').replace(/[^0-9]/g, '');
   return cleaned ? parseInt(cleaned, 10) : 0;
@@ -38,6 +38,8 @@ export function ScrapeControls({
   hasImages,
   imageCount,
   progress,
+  strategy,
+  onStrategyChange,
 }: ScrapeControlsProps) {
   const [singleNumber, setSingleNumber] = useState(1);
   const [startNumber, setStartNumber] = useState(1);
@@ -45,32 +47,26 @@ export function ScrapeControls({
   const [isRangeMode, setIsRangeMode] = useState(false);
 
   const handleSingleScrape = () => {
-    onScrape(singleNumber, singleNumber);
+    onScrape(singleNumber, singleNumber, strategy);
   };
 
   const handleRangeScrape = () => {
-    onScrape(startNumber, endNumber);
+    onScrape(startNumber, endNumber, strategy);
   };
 
   const handleSingleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFormattedNumber(e.target.value);
-    if (value >= 0 && value <= 9999999) {
-      setSingleNumber(value);
-    }
+    if (value >= 0 && value <= 9999999) setSingleNumber(value);
   };
 
   const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFormattedNumber(e.target.value);
-    if (value >= 0 && value <= 9999999) {
-      setStartNumber(value);
-    }
+    if (value >= 0 && value <= 9999999) setStartNumber(value);
   };
 
   const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFormattedNumber(e.target.value);
-    if (value >= 0 && value <= 9999999) {
-      setEndNumber(value);
-    }
+    if (value >= 0 && value <= 9999999) setEndNumber(value);
   };
 
   const progressPercent = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
@@ -179,6 +175,9 @@ export function ScrapeControls({
         </CollapsibleContent>
       </Collapsible>
 
+      {/* Advanced Mode */}
+      <AdvancedModePanel strategy={strategy} onStrategyChange={onStrategyChange} disabled={isLoading} />
+
       {isLoading && progress.total > 0 && (
         <div className="space-y-3 bg-muted/50 p-4 rounded-2xl">
           <div className="flex justify-between text-lg font-semibold">
@@ -187,7 +186,7 @@ export function ScrapeControls({
               {progress.phase === 'checking' 
                 ? 'Checking for saved pictures... 📂' 
                 : progress.phase === 'generating' 
-                  ? 'Creating your Numberblock with AI... ✨🎨' 
+                  ? 'Creating your Numberblock... ✨🎨' 
                   : 'Looking for Numberblocks... 🔍'}
             </span>
             {progress.total > 1 && (
