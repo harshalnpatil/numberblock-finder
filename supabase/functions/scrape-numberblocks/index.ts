@@ -562,7 +562,6 @@ Deno.serve(async (req) => {
         }
       }
     }
-    }
     
     // Sort results by number
     results.sort((a, b) => a.number - b.number);
