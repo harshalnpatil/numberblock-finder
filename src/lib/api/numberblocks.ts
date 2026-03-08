@@ -37,6 +37,7 @@ export const numberblocksApi = {
     if (isSingleNumber && strategy !== 'auto' && strategy !== 'wiki-only') {
       let functionName: string;
       if (strategy === 'svg') functionName = 'generate-svg-numberblock';
+      else if (strategy === 'compose') functionName = 'compose-numberblock';
       else if (strategy === 'ai-gemini') functionName = 'generate-gemini-numberblock';
       else functionName = 'generate-numberblock'; // ai-openai
 
