@@ -221,7 +221,7 @@ RULES:
     console.log(`Gemini image for ${number} saved at ${storagePath}`);
 
     return new Response(
-      JSON.stringify({ success: true, imageUrl: publicUrl, aiGenerated: true }),
+      JSON.stringify({ success: true, imageUrl: publicUrl, aiGenerated: true, generationMethod: 'gemini' }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
