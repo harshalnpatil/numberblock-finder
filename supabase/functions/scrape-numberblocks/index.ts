@@ -516,8 +516,8 @@ Deno.serve(async (req) => {
       }
     }
     
-    // Auto-generate for single number if no image found
-    if (isSingleNumber) {
+    // Auto-generate for single number if no image found (skip if wiki-only strategy)
+    if (isSingleNumber && strategy !== 'wiki-only') {
       const singleResult = results.find(r => r.number === startNumber);
       if (singleResult && !singleResult.imageUrl && !singleResult.cached) {
         // For numbers > 10, try composition first
@@ -561,6 +561,7 @@ Deno.serve(async (req) => {
           }
         }
       }
+    }
     }
     
     // Sort results by number
