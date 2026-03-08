@@ -261,6 +261,54 @@ export function useNumberblocksScraper() {
     ));
   }, []);
 
+  const compareStrategies = useCallback(async (number: number) => {
+    setIsLoading(true);
+    setImages([]);
+    setCompareNumber(number);
+    cancelledRef.current = false;
+    
+    const strategies = ALL_STRATEGIES;
+    const total = strategies.length;
+    setProgress({ current: 0, total, phase: 'comparing' });
+    
+    // Initialize all items as loading
+    const initialItems: CompareItem[] = strategies.map(s => ({
+      strategy: s.value,
+      label: s.label,
+      emoji: s.emoji,
+      image: null,
+      loading: true,
+    }));
+    setCompareItems([...initialItems]);
+    
+    // Fire all strategies in parallel, update as each resolves
+    const promises = strategies.map(async (s, idx) => {
+      try {
+        const result = await numberblocksApi.scrapeImages(number, number, s.value);
+        const image = result.success && result.data?.[0] ? result.data[0] : null;
+        setCompareItems(prev => prev.map((item, i) =>
+          i === idx ? { ...item, image, loading: false, error: !image ? (result.error || 'No result') : undefined } : item
+        ));
+        setProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      } catch (err) {
+        setCompareItems(prev => prev.map((item, i) =>
+          i === idx ? { ...item, loading: false, error: 'Failed' } : item
+        ));
+        setProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      }
+    });
+    
+    await Promise.all(promises);
+    
+    toast({
+      title: 'Comparison complete! 🔬',
+      description: `Generated Numberblock ${number.toLocaleString()} with ${total} strategies`,
+    });
+    
+    setIsLoading(false);
+    setProgress({ current: 0, total: 0, phase: 'idle' });
+  }, [toast]);
+
   const successfulImageCount = images.filter(img => img.imageUrl).length;
 
   return {
@@ -270,9 +318,12 @@ export function useNumberblocksScraper() {
     progress,
     scrapeImages,
     stopScraping,
-    downloadAsZip: downloadImages, // Keep the same name for backward compatibility
+    downloadAsZip: downloadImages,
     updateImage,
-    hasImages: images.length > 0,
+    compareStrategies,
+    compareItems,
+    compareNumber,
+    hasImages: images.length > 0 || compareItems.length > 0,
     successfulImageCount,
   };
 }
