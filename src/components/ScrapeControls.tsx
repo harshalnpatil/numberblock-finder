@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, Download, Square, Sparkles } from 'lucide-react';
+import { Loader2, Download, Square, Sparkles, GitCompareArrows } from 'lucide-react';
 import { ScrapeProgress } from '@/hooks/useNumberblocksScraper';
 import { AdvancedModePanel } from '@/components/AdvancedModePanel';
 import type { GenerationStrategy } from '@/lib/api/numberblocks';
@@ -13,6 +13,7 @@ interface ScrapeControlsProps {
   onScrape: (start: number, end: number, strategy: GenerationStrategy) => Promise<void>;
   onStop: () => void;
   onDownload: () => Promise<void>;
+  onCompare: (number: number) => Promise<void>;
   isLoading: boolean;
   isDownloading: boolean;
   hasImages: boolean;
@@ -33,6 +34,7 @@ export function ScrapeControls({
   onScrape,
   onStop,
   onDownload,
+  onCompare,
   isLoading,
   isDownloading,
   hasImages,
@@ -45,9 +47,12 @@ export function ScrapeControls({
   const [startNumber, setStartNumber] = useState(1);
   const [endNumber, setEndNumber] = useState(20);
   const [isRangeMode, setIsRangeMode] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
 
   const handleScrape = () => {
-    if (isRangeMode) {
+    if (compareMode) {
+      onCompare(singleNumber);
+    } else if (isRangeMode) {
       onScrape(startNumber, endNumber, strategy);
     } else {
       onScrape(singleNumber, singleNumber, strategy);
@@ -154,11 +159,24 @@ export function ScrapeControls({
             ) : (
               <Button
                 onClick={handleScrape}
-                disabled={isRangeMode ? startNumber > endNumber : singleNumber < 1}
-                className="h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg bg-primary hover:bg-primary/90"
+                disabled={isRangeMode && !compareMode ? startNumber > endNumber : singleNumber < 1}
+                className={`h-14 px-8 text-xl font-bold rounded-2xl fun-button shadow-lg ${
+                  compareMode 
+                    ? 'bg-secondary hover:bg-secondary/90' 
+                    : 'bg-primary hover:bg-primary/90'
+                }`}
               >
-                <Sparkles className="mr-2 h-6 w-6" />
-                {isRangeMode ? 'Find All! 🌈' : 'Find It! ✨'}
+                {compareMode ? (
+                  <>
+                    <GitCompareArrows className="mr-2 h-6 w-6" />
+                    Compare All! 🔬
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-6 w-6" />
+                    {isRangeMode ? 'Find All! 🌈' : 'Find It! ✨'}
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -173,6 +191,8 @@ export function ScrapeControls({
             endNumber={endNumber}
             onStartChange={setStartNumber}
             onEndChange={setEndNumber}
+            compareMode={compareMode}
+            onCompareModeChange={setCompareMode}
           />
         </TabsContent>
       </Tabs>
@@ -187,7 +207,9 @@ export function ScrapeControls({
                 ? 'Checking for saved pictures... 📂'
                 : progress.phase === 'generating'
                   ? 'Creating your Numberblock... ✨🎨'
-                  : 'Looking for Numberblocks... 🔍'}
+                  : progress.phase === 'comparing'
+                    ? 'Comparing all strategies... 🔬'
+                    : 'Looking for Numberblocks... 🔍'}
             </span>
             {progress.total > 1 && (
               <span className="text-primary text-xl font-bold">
