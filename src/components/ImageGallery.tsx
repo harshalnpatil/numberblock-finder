@@ -19,9 +19,11 @@ function isCachedUrl(url: string): boolean {
   return url.includes('supabase.co/storage');
 }
 
-function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }): { label: string; emoji: string; className: string } | null {
+function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; generationMethod?: GenerationMethod; composed?: boolean; svgGenerated?: boolean }): { label: string; emoji: string; className: string } | null {
   if (img.svgGenerated) return { label: 'SVG', emoji: '📐', className: 'bg-accent/90 text-accent-foreground' };
-  if (img.aiGenerated) return { label: 'AI', emoji: '🎨', className: 'bg-secondary/90 text-secondary-foreground' };
+  if (img.aiGenerated && img.generationMethod === 'gemini') return { label: 'Gemini', emoji: '✨', className: 'bg-[hsl(280_70%_55%/0.9)] text-primary-foreground' };
+  if (img.aiGenerated && img.generationMethod === 'openai') return { label: 'OpenAI', emoji: '🎨', className: 'bg-secondary/90 text-secondary-foreground' };
+  if (img.aiGenerated) return { label: 'AI', emoji: '🤖', className: 'bg-secondary/90 text-secondary-foreground' };
   if (img.composed) return { label: 'Composed', emoji: '🧩', className: 'bg-primary/90 text-primary-foreground' };
   if (img.cached) return { label: 'Wiki', emoji: '📚', className: 'bg-muted text-muted-foreground' };
   return null;
