@@ -279,6 +279,7 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         success: true,
         imageUrl: publicUrl,
         aiGenerated: true,
+        generationMethod: 'openai',
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
