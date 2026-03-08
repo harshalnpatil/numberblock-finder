@@ -144,7 +144,7 @@ function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating
       <div className="aspect-square relative bg-gradient-to-br from-muted/50 to-muted flex items-center justify-center">
         {img.imageUrl ? (
           <>
-            <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} composed={img.composed} svgGenerated={img.svgGenerated} />
+            <ProxiedImage imageUrl={img.imageUrl} number={img.number} cached={img.cached} aiGenerated={img.aiGenerated} generationMethod={img.generationMethod} composed={img.composed} svgGenerated={img.svgGenerated} />
             {/* Regenerate button overlay */}
             <Button
               size="icon"
