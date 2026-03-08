@@ -19,7 +19,15 @@ function isCachedUrl(url: string): boolean {
   return url.includes('supabase.co/storage');
 }
 
-function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean }) {
+function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }): { label: string; emoji: string; className: string } | null {
+  if (img.svgGenerated) return { label: 'SVG', emoji: '📐', className: 'bg-accent/90 text-accent-foreground' };
+  if (img.aiGenerated) return { label: 'AI', emoji: '🎨', className: 'bg-secondary/90 text-secondary-foreground' };
+  if (img.composed) return { label: 'Composed', emoji: '🧩', className: 'bg-primary/90 text-primary-foreground' };
+  if (img.cached) return { label: 'Wiki', emoji: '📚', className: 'bg-muted text-muted-foreground' };
+  return null;
+}
+
+function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
