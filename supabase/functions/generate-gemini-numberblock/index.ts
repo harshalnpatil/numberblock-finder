@@ -6,6 +6,67 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ============= Shared Rate Limiting (same bucket as OpenAI) =============
+
+const AI_RATE_LIMITS = {
+  perIp: { threshold: 10, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+  global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
+  maxDelay: 60000,
+};
+
+function getClientIP(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-real-ip')
+    || 'unknown';
+}
+
+async function checkAIRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number }> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - AI_RATE_LIMITS.perIp.windowMs);
+
+  // Use same endpoint key 'generate-numberblock' so OpenAI + Gemini share one budget
+  const { data: ipCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('ip_address', ip)
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', windowStart.toISOString());
+
+  const ipTotal = ipCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+
+  const { data: globalCalls } = await supabase
+    .from('rate_limit_log')
+    .select('api_calls_count')
+    .eq('endpoint', 'generate-numberblock')
+    .gte('created_at', windowStart.toISOString());
+
+  const globalTotal = globalCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
+
+  let delay = 0;
+  if (ipTotal > AI_RATE_LIMITS.perIp.threshold) {
+    delay += (ipTotal - AI_RATE_LIMITS.perIp.threshold) * AI_RATE_LIMITS.perIp.delayPerExcess;
+  }
+  if (globalTotal > AI_RATE_LIMITS.global.threshold) {
+    delay += (globalTotal - AI_RATE_LIMITS.global.threshold) * AI_RATE_LIMITS.global.delayPerExcess;
+  }
+
+  return { delay: Math.min(delay, AI_RATE_LIMITS.maxDelay), ipTotal, globalTotal };
+}
+
+async function logAICall(supabase: any, ip: string): Promise<void> {
+  const { error } = await supabase.from('rate_limit_log').insert({
+    ip_address: ip,
+    endpoint: 'generate-numberblock',
+    api_calls_count: 1,
+  });
+  if (error) {
+    console.error('Failed to log AI call:', error);
+  }
+}
+
+// ============= Helpers =============
+
 function numberToWord(num: number): string {
   const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
     "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
@@ -72,16 +133,18 @@ function getStructureGuide(num: number): string {
   return `- Structural representation of ${num} blocks using mega-block units.`;
 }
 
+// ============= Main Handler =============
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: "LOVABLE_API_KEY is not configured" }),
+        JSON.stringify({ success: false, error: "GEMINI_API_KEY is not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -90,6 +153,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const clientIP = getClientIP(req);
     const { number } = await req.json();
 
     if (!number || typeof number !== "number" || number < 1) {
@@ -97,6 +161,14 @@ Deno.serve(async (req) => {
         JSON.stringify({ success: false, error: "Valid positive number is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Check shared rate limits (same bucket as OpenAI)
+    const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
+
+    if (delay > 0) {
+      console.log(`Gemini rate limited: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     console.log(`Generating Gemini image for Numberblock ${number}`);
@@ -124,34 +196,29 @@ RULES:
 - No background, no extra characters
 - Black outline only, coloring page style`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Call Gemini API directly using generateContent with image generation
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+
+    const response = await fetch(geminiUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [{ role: "user", content: prompt }],
-        modalities: ["image", "text"],
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
+        },
       }),
     });
 
     if (!response.ok) {
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ success: false, error: "Rate limit exceeded. Please try again later." }),
+          JSON.stringify({ success: false, error: "Gemini rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ success: false, error: "AI credits exhausted. Please add funds." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await response.text();
-      console.error("Gemini gateway error:", response.status, errorText);
+      console.error("Gemini API error:", response.status, errorText);
       return new Response(
         JSON.stringify({ success: false, error: "Failed to generate image with Gemini" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -159,9 +226,23 @@ RULES:
     }
 
     const data = await response.json();
-    const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
-    if (!imageData) {
+    // Extract image from Gemini response (inline_data format)
+    let base64Data: string | null = null;
+    let mimeType = "image/png";
+
+    const parts = data.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData) {
+          base64Data = part.inlineData.data;
+          mimeType = part.inlineData.mimeType || "image/png";
+          break;
+        }
+      }
+    }
+
+    if (!base64Data) {
       console.error("No image in Gemini response:", JSON.stringify(data).slice(0, 500));
       return new Response(
         JSON.stringify({ success: false, error: "No image generated by Gemini" }),
@@ -169,17 +250,7 @@ RULES:
       );
     }
 
-    // Extract base64 data (strip data:image/png;base64, prefix)
-    const base64Match = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!base64Match) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid image format from Gemini" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const imageType = base64Match[1]; // png, jpeg, etc.
-    const base64Data = base64Match[2];
+    const imageType = mimeType.split("/")[1] || "png";
 
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -193,7 +264,7 @@ RULES:
     const { error: uploadError } = await supabase.storage
       .from("numberblocks-images")
       .upload(storagePath, bytes, {
-        contentType: `image/${imageType}`,
+        contentType: mimeType,
         upsert: true,
       });
 
@@ -219,6 +290,9 @@ RULES:
       .getPublicUrl(storagePath);
 
     console.log(`Gemini image for ${number} saved at ${storagePath}`);
+
+    // Log the AI generation call for shared rate limiting
+    await logAICall(supabase, clientIP);
 
     return new Response(
       JSON.stringify({ success: true, imageUrl: publicUrl, aiGenerated: true, generationMethod: 'gemini' }),
