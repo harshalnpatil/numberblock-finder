@@ -29,7 +29,7 @@ function getStrategyBadge(img: { cached?: boolean; aiGenerated?: boolean; genera
   return null;
 }
 
-function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; composed?: boolean; svgGenerated?: boolean }) {
+function ProxiedImage({ imageUrl, number, cached, aiGenerated, generationMethod, composed, svgGenerated }: { imageUrl: string; number: number; cached?: boolean; aiGenerated?: boolean; generationMethod?: GenerationMethod; composed?: boolean; svgGenerated?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
