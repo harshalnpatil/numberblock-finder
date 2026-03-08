@@ -28,6 +28,8 @@ export function useNumberblocksScraper() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState<ScrapeProgress>({ current: 0, total: 0, phase: 'idle' });
+  const [compareItems, setCompareItems] = useState<CompareItem[]>([]);
+  const [compareNumber, setCompareNumber] = useState<number | null>(null);
   const { toast } = useToast();
   
   // Ref to track cancellation
