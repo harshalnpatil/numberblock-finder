@@ -4,6 +4,7 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { GitCompareArrows } from 'lucide-react';
 import type { GenerationStrategy } from '@/lib/api/numberblocks';
 
 interface AdvancedModePanelProps {
@@ -16,6 +17,8 @@ interface AdvancedModePanelProps {
   endNumber: number;
   onStartChange: (val: number) => void;
   onEndChange: (val: number) => void;
+  compareMode: boolean;
+  onCompareModeChange: (val: boolean) => void;
 }
 
 const STRATEGIES: { value: GenerationStrategy; label: string; description: string; emoji: string }[] = [
@@ -37,11 +40,27 @@ export function AdvancedModePanel({
   endNumber,
   onStartChange,
   onEndChange,
+  compareMode,
+  onCompareModeChange,
 }: AdvancedModePanelProps) {
   return (
     <div className="space-y-5 animate-in fade-in-0 slide-in-from-top-2 duration-300">
-      {/* Strategy Selection */}
-      <div className="space-y-3">
+      {/* Compare Mode Toggle */}
+      <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/10 border-2 border-secondary/20">
+        <Label className="text-sm font-semibold flex items-center gap-2 cursor-pointer">
+          <GitCompareArrows className="h-4 w-4 text-secondary" />
+          <span>Compare All Strategies</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">NEW</Badge>
+        </Label>
+        <Switch
+          checked={compareMode}
+          onCheckedChange={onCompareModeChange}
+          disabled={disabled}
+        />
+      </div>
+
+      {/* Strategy Selection - disabled when compare mode is on */}
+      <div className={`space-y-3 transition-opacity ${compareMode ? 'opacity-40 pointer-events-none' : ''}`}>
         <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
           🔧 Generation Strategy
         </Label>
@@ -49,7 +68,7 @@ export function AdvancedModePanel({
           value={strategy}
           onValueChange={(val) => onStrategyChange(val as GenerationStrategy)}
           className="grid grid-cols-2 sm:grid-cols-3 gap-2"
-          disabled={disabled}
+          disabled={disabled || compareMode}
         >
           {STRATEGIES.map((s) => (
             <Label
@@ -78,8 +97,8 @@ export function AdvancedModePanel({
 
       <Separator />
 
-      {/* Range Mode Toggle */}
-      <div className="space-y-4">
+      {/* Range Mode Toggle - disabled when compare mode is on */}
+      <div className={`space-y-4 transition-opacity ${compareMode ? 'opacity-40 pointer-events-none' : ''}`}>
         <div className="flex items-center justify-between">
           <Label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
             🌈 Batch Range
@@ -87,11 +106,11 @@ export function AdvancedModePanel({
           <Switch
             checked={isRangeMode}
             onCheckedChange={onRangeModeChange}
-            disabled={disabled}
+            disabled={disabled || compareMode}
           />
         </div>
 
-        {isRangeMode && (
+        {isRangeMode && !compareMode && (
           <div className="space-y-3 animate-in fade-in-0 slide-in-from-top-1 duration-200">
             <div className="flex items-center justify-between text-sm">
               <Badge variant="secondary" className="font-mono text-base px-3 py-1">

@@ -2,6 +2,23 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type GenerationStrategy = 'auto' | 'svg' | 'compose' | 'ai-openai' | 'ai-gemini' | 'wiki-only';
 
+export const ALL_STRATEGIES: { value: GenerationStrategy; label: string; emoji: string }[] = [
+  { value: 'wiki-only', label: 'Wiki', emoji: '📚' },
+  { value: 'svg', label: 'SVG', emoji: '📐' },
+  { value: 'compose', label: 'Compose', emoji: '🧩' },
+  { value: 'ai-openai', label: 'OpenAI', emoji: '🎨' },
+  { value: 'ai-gemini', label: 'Gemini', emoji: '✨' },
+];
+
+export interface CompareResult {
+  strategy: GenerationStrategy;
+  label: string;
+  emoji: string;
+  image: NumberImage | null;
+  loading: boolean;
+  error?: string;
+}
+
 export interface NumberImage {
   number: number;
   imageUrl: string | null;
@@ -122,5 +139,14 @@ export const numberblocksApi = {
     }
     
     return data;
+  },
+
+  async compareAllStrategies(number: number): Promise<{ strategy: GenerationStrategy; result: ScrapeResponse }[]> {
+    const strategies = ALL_STRATEGIES;
+    const promises = strategies.map(async (s) => {
+      const result = await numberblocksApi.scrapeImages(number, number, s.value);
+      return { strategy: s.value, result };
+    });
+    return Promise.all(promises);
   },
 };
