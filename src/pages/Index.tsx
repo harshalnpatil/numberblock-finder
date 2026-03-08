@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScrapeControls } from '@/components/ScrapeControls';
 import { ImageGallery } from '@/components/ImageGallery';
+import { CompareStrip } from '@/components/CompareStrip';
 import { useNumberblocksScraper } from '@/hooks/useNumberblocksScraper';
 import type { GenerationStrategy } from '@/lib/api/numberblocks';
 
@@ -15,6 +16,9 @@ const Index = () => {
     stopScraping,
     downloadAsZip,
     updateImage,
+    compareStrategies,
+    compareItems,
+    compareNumber,
     hasImages,
     successfulImageCount,
   } = useNumberblocksScraper();
@@ -37,6 +41,7 @@ const Index = () => {
             onScrape={scrapeImages}
             onStop={stopScraping}
             onDownload={downloadAsZip}
+            onCompare={compareStrategies}
             isLoading={isLoading}
             isDownloading={isDownloading}
             hasImages={hasImages}
@@ -45,6 +50,10 @@ const Index = () => {
             strategy={strategy}
             onStrategyChange={setStrategy}
           />
+
+          {compareItems.length > 0 && compareNumber !== null && (
+            <CompareStrip number={compareNumber} items={compareItems} />
+          )}
 
           <ImageGallery images={images} onImageUpdate={updateImage} />
         </div>
