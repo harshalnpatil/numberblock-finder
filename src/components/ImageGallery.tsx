@@ -107,24 +107,19 @@ function ProxiedImage({ imageUrl, number, cached, aiGenerated, composed, svgGene
         alt={`Numberblock ${number}`}
         className="w-full h-full object-contain p-2"
       />
-      {aiGenerated && (
-        <div className="absolute top-1 right-1 bg-secondary/90 text-secondary-foreground text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-          <Wand2 className="h-3 w-3" />
-          AI
-        </div>
-      )}
-      {composed && (
-        <div className="absolute top-1 right-1 bg-primary/90 text-primary-foreground text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-          🧩 Composed
-        </div>
-      )}
+      {(() => {
+        const badge = getStrategyBadge({ cached, aiGenerated, composed, svgGenerated });
+        if (!badge) return null;
+        return (
+          <div className={`absolute top-1 right-1 text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${badge.className}`}>
+            <span>{badge.emoji}</span>
+            {badge.label}
+          </div>
+        );
+      })()}
     </div>
   );
 }
-
-interface ImageCardProps {
-  img: NumberImage;
-  onGenerate?: (number: number) => void;
   onRegenerate?: (number: number) => void;
   isGenerating?: boolean;
   isRegenerating?: boolean;
