@@ -1,30 +1,57 @@
 
 
-# Status: Gallery Page Reorder NOT Yet Implemented
+# Fix: Wiki Disambiguation Pages Breaking Scraping
 
-The disambiguation retry (from the previous plan) is in place, but the approved "reorder image extraction" plan has not been implemented. Here is what needs to be done:
+## Root Cause
 
-## Current flow (lines 628-658)
-1. Scrape main page → `extractInfoboxImage` (all 3 priorities including fan art filename match)
-2. If no image + disambiguation → retry `_(character)` page → same `extractInfoboxImage`
-3. If still nothing → return null
+The `numberToWord()` function generates URLs like `/wiki/Eighteen`, but the Numberblocks wiki uses **disambiguation pages** for some numbers. When you visit `/wiki/Eighteen`, it lands on a disambiguation page (no character image), while the actual character page lives at `/wiki/Eighteen_(character)`.
 
-## Required flow (per approved plan)
-1. Scrape main page → `extractInfoboxImage` **priorities 1-2 only** (exact number match + infobox)
-2. If no image + disambiguation → retry `_(character)` page → priorities 1-2 only
-3. **If still no image → scrape Gallery subpage → extract first valid image**
-4. If still no image → fall back to priority 3 (fan art filename match) on original HTML
-5. If still nothing → return null
+Some numbers (like Five, Twenty) auto-redirect from the base name to the character page, but others (like Eighteen) show a disambiguation page instead. This is inconsistent across the wiki and we cannot predict which numbers have disambiguation pages.
 
-## Changes needed
+## Fix
 
-**File: `supabase/functions/scrape-numberblocks/index.ts`**
+Update `scrapeAndCacheNumber()` in `supabase/functions/scrape-numberblocks/index.ts` to implement a **two-attempt strategy**:
 
-1. **Split `extractInfoboxImage`** into two modes: one that only checks priorities 1-2 (infobox), and one that checks priority 3 (filename fallback). Could be done with a parameter like `skipFallback: boolean`.
+1. **First attempt**: Scrape the current URL (`/wiki/Eighteen`) as-is
+2. **If no image found**: Check if the HTML contains disambiguation markers (e.g., "may refer to", "disambiguation" in the page)
+3. **If disambiguation detected**: Re-scrape using the `_(character)` suffix URL (`/wiki/Eighteen_(character)`)
 
-2. **Add Gallery scrape step** in `scrapeAndCacheNumber` between the disambiguation retry and the "no image found" return. This scrapes `{pageUrl}/Gallery` via Firecrawl and extracts the first valid character image.
+This costs one extra Firecrawl call only when a disambiguation page is hit -- which is a small subset of numbers.
 
-3. **Add fan art fallback** after Gallery fails — run `extractInfoboxImage` with priority 3 on the original HTML.
+### Alternative considered
+We could always try `_(character)` first, but that would break numbers where the character page IS the base page (no `_(character)` variant exists). The fallback approach is safer.
 
-4. **Clean up stale cache** for number 18: delete from `numberblocks_cache` where number = 18, and remove `018.webp` from storage.
+## Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/scrape-numberblocks/index.ts` | In `scrapeAndCacheNumber()`, after the first scrape, detect disambiguation pages and retry with `_(character)` suffix |
+
+### Detection Logic
+The disambiguation page HTML contains telltale signs: the text "may refer to" and links to `_(character)`. We check for these in the scraped HTML before retrying.
+
+### Code Change (in `scrapeAndCacheNumber`, around line 628-631)
+After `extractInfoboxImage` returns null, add:
+```typescript
+// If no image found, check if this is a disambiguation page
+if (!originalImageUrl && isDisambiguationPage(html)) {
+  // Retry with _(character) suffix
+  const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
+  console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
+  
+  const retryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', { ... });
+  const retryData = await retryResponse.json();
+  const retryHtml = retryData.data?.html || '';
+  originalImageUrl = extractInfoboxImage(retryHtml, num);
+}
+```
+
+Add helper:
+```typescript
+function isDisambiguationPage(html: string): boolean {
+  return html.includes('may refer to') || 
+         html.includes('disambiguation') || 
+         html.includes('Disambiguations');
+}
+```
 

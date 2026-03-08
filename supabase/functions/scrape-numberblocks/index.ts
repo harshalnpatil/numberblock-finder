@@ -625,9 +625,11 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
     }
 
     const html = data.data?.html || data.html || '';
-    let originalImageUrl = extractInfoboxImage(html, num);
+    // Step 1: Try priorities 1-2 only (exact number match + infobox) on main page
+    let originalImageUrl = extractInfoboxImage(html, num, true);
+    let lastHtml = html;
     
-    // If no image found, check if this is a disambiguation page and retry with _(character) suffix
+    // Step 2: If no image found, check disambiguation and retry with _(character) suffix
     if (!originalImageUrl && isDisambiguationPage(html)) {
       const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
       console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
@@ -648,9 +650,61 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
       const retryData = await retryResponse.json();
       if (retryResponse.ok) {
         const retryHtml = retryData.data?.html || retryData.html || '';
-        originalImageUrl = extractInfoboxImage(retryHtml, num);
+        lastHtml = retryHtml;
+        originalImageUrl = extractInfoboxImage(retryHtml, num, true);
       } else {
         console.error(`Firecrawl retry error for ${num} _(character):`, retryData);
+      }
+    }
+    
+    // Step 3: If still no image, try the Gallery subpage
+    if (!originalImageUrl) {
+      // Determine the base page URL we ended up on (could be base or _(character))
+      const baseWord = encodeURIComponent(numberWord);
+      const galleryUrls = [
+        `https://numberblocks.fandom.com/wiki/${baseWord}_(character)/Gallery`,
+        `https://numberblocks.fandom.com/wiki/${baseWord}/Gallery`,
+      ];
+      
+      for (const galleryUrl of galleryUrls) {
+        console.log(`Trying Gallery page for ${num}: ${galleryUrl}`);
+        try {
+          const galleryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: galleryUrl,
+              formats: ['html'],
+              onlyMainContent: false,
+            }),
+          });
+          
+          const galleryData = await galleryResponse.json();
+          if (galleryResponse.ok) {
+            const galleryHtml = galleryData.data?.html || galleryData.html || '';
+            if (galleryHtml.length > 500) {
+              // Extract first valid character image from gallery
+              originalImageUrl = extractFirstGalleryImage(galleryHtml, num);
+              if (originalImageUrl) {
+                console.log(`Found image from Gallery page for ${num}`);
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Gallery scrape error for ${num}:`, err);
+        }
+      }
+    }
+    
+    // Step 4: Fall back to Priority 3 (filename contains number word) on original HTML
+    if (!originalImageUrl) {
+      originalImageUrl = extractInfoboxImageFallback(lastHtml, num);
+      if (originalImageUrl) {
+        console.log(`Found image via filename fallback for ${num}`);
       }
     }
     
@@ -759,7 +813,7 @@ function isValidCharacterImage(imageUrl: string): boolean {
   return true;
 }
 
-function extractInfoboxImage(html: string, num: number): string | null {
+function extractInfoboxImage(html: string, num: number, skipFallback: boolean = false): string | null {
   const numStr = num.toString();
   const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
   
@@ -804,23 +858,58 @@ function extractInfoboxImage(html: string, num: number): string | null {
       }
     }
     
-    // Priority 3: Fallback for small numbers - check if filename contains number word
-    for (const match of allImgMatches) {
-      let imageUrl = match[1];
-      
-      if (!isValidCharacterImage(imageUrl)) {
-        continue;
-      }
-      
-      const urlLower = imageUrl.toLowerCase();
-      if (urlLower.includes(numberName)) {
-        imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-        imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-        return imageUrl;
-      }
+    // Priority 3: Fallback - check if filename contains number word (fan art territory)
+    // Only run if skipFallback is false
+    if (!skipFallback) {
+      return extractInfoboxImageFallback(html, num);
     }
   }
 
+  return null;
+}
+
+// Separate fallback function: Priority 3 - filename contains number word
+function extractInfoboxImageFallback(html: string, num: number): string | null {
+  if (num > 1000) return null;
+  
+  const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
+  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
+  
+  for (const match of allImgMatches) {
+    let imageUrl = match[1];
+    
+    if (!isValidCharacterImage(imageUrl)) {
+      continue;
+    }
+    
+    const urlLower = imageUrl.toLowerCase();
+    if (urlLower.includes(numberName)) {
+      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+      return imageUrl;
+    }
+  }
+  
+  return null;
+}
+
+// Extract first valid character image from a Gallery page
+function extractFirstGalleryImage(html: string, num: number): string | null {
+  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
+  
+  for (const match of allImgMatches) {
+    let imageUrl = match[1];
+    
+    if (!isValidCharacterImage(imageUrl)) {
+      continue;
+    }
+    
+    // Gallery pages contain many images - take the first valid one (usually the main character image)
+    imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
+    imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+    return imageUrl;
+  }
+  
   return null;
 }
 

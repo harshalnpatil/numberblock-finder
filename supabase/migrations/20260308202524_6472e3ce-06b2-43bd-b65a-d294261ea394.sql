@@ -1,0 +1,1 @@
+DELETE FROM numberblocks_cache WHERE number = 18
