@@ -452,8 +452,11 @@ Deno.serve(async (req) => {
           .from('numberblocks-images')
           .getPublicUrl(storagePath);
         
-        const isAIGenerated = storagePath.startsWith('ai-');
+        const isAIGenerated = storagePath.startsWith('ai-') || storagePath.startsWith('gem-');
         const isComposed = storagePath.startsWith('comp-');
+        const generationMethod = storagePath.startsWith('ai-') ? 'openai' as const
+          : storagePath.startsWith('gem-') ? 'gemini' as const
+          : undefined;
         
         results.push({
           number: num,
@@ -461,6 +464,7 @@ Deno.serve(async (req) => {
           pageUrl: `https://numberblocks.fandom.com/wiki/${numberToWord(num)}`,
           cached: true,
           aiGenerated: isAIGenerated,
+          generationMethod,
           composed: isComposed,
         });
       } else if (!shouldScrape(num)) {
