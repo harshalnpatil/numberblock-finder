@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
-export type GenerationStrategy = 'auto' | 'svg' | 'ai-openai' | 'ai-gemini' | 'wiki-only';
+export type GenerationStrategy = 'auto' | 'svg' | 'compose' | 'ai-openai' | 'ai-gemini' | 'wiki-only';
 
 export interface NumberImage {
   number: number;
