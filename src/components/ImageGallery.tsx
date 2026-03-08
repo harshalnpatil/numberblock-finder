@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NumberImage, numberblocksApi } from '@/lib/api/numberblocks';
+import { NumberImage, numberblocksApi, GenerationMethod } from '@/lib/api/numberblocks';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, ImageOff, Loader2, Database, Sparkles, Wand2, RefreshCw } from 'lucide-react';
