@@ -20,7 +20,7 @@ function base64ToBlob(base64: string, contentType: string): Blob {
 export interface ScrapeProgress {
   current: number;
   total: number;
-  phase: 'checking' | 'scraping' | 'generating' | 'idle';
+  phase: 'checking' | 'scraping' | 'generating' | 'comparing' | 'idle';
 }
 
 export function useNumberblocksScraper() {
