@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Image, decode, encode } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,21 +29,23 @@ function decomposeNumber(num: number): number[] {
 }
 
 /**
- * Fetches an image from a URL and returns it as an imagescript Image.
+ * Fetches an image from a URL and returns it as base64 data URI.
+ * Works with any format the browser supports (PNG, JPEG, WebP, etc.)
  */
-async function fetchImage(url: string): Promise<Image | null> {
+async function fetchImageAsDataUri(url: string): Promise<{ dataUri: string } | null> {
   try {
     const response = await fetch(url);
     if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || 'image/png';
     const buffer = new Uint8Array(await response.arrayBuffer());
-    
-    // Try decoding as PNG first, then JPEG
-    try {
-      return await Image.decode(buffer);
-    } catch {
-      console.error("Failed to decode image from:", url);
-      return null;
+
+    // Convert to base64
+    let binary = '';
+    for (let i = 0; i < buffer.length; i++) {
+      binary += String.fromCharCode(buffer[i]);
     }
+    const base64 = btoa(binary);
+    return { dataUri: `data:${contentType};base64,${base64}` };
   } catch (error) {
     console.error("Failed to fetch image:", url, error);
     return null;
@@ -52,35 +53,24 @@ async function fetchImage(url: string): Promise<Image | null> {
 }
 
 /**
- * Composites multiple images side-by-side, scaling them to the same height.
+ * Creates an SVG that composites multiple images side-by-side.
+ * This avoids needing to decode WebP or other formats server-side —
+ * images are embedded as data URIs and the browser handles rendering.
  */
-function compositeImages(images: Image[]): Image {
-  if (images.length === 1) return images[0];
+function compositeAsSvg(images: { dataUri: string }[], componentSize: number): string {
+  const gap = 10;
+  const totalWidth = images.length * componentSize + (images.length - 1) * gap;
 
-  const targetHeight = 512; // Standardize height
-  
-  // Scale all images to target height
-  const scaled: Image[] = images.map(img => {
-    const scale = targetHeight / img.height;
-    const newWidth = Math.round(img.width * scale);
-    return img.resize(newWidth, targetHeight);
-  });
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${totalWidth}" height="${componentSize}" viewBox="0 0 ${totalWidth} ${componentSize}">`;
 
-  // Calculate total width with gaps
-  const gap = 8;
-  const totalWidth = scaled.reduce((sum, img) => sum + img.width, 0) + gap * (scaled.length - 1);
-
-  // Create composite canvas
-  const composite = new Image(totalWidth, targetHeight);
-
-  // Draw each image side-by-side
   let x = 0;
-  for (const img of scaled) {
-    composite.composite(img, x, 0);
-    x += img.width + gap;
+  for (const img of images) {
+    svg += `<image href="${img.dataUri}" x="${x}" y="0" width="${componentSize}" height="${componentSize}" preserveAspectRatio="xMidYMid meet"/>`;
+    x += componentSize + gap;
   }
+  svg += `</svg>`;
 
-  return composite;
+  return svg;
 }
 
 Deno.serve(async (req) => {
@@ -133,8 +123,7 @@ Deno.serve(async (req) => {
     const missingComponents = components.filter(c => !cachedMap.has(c));
     if (missingComponents.length > 0) {
       console.log(`Scraping missing components: [${missingComponents.join(", ")}]`);
-      
-      // Call scrape-numberblocks for each missing component
+
       for (const comp of missingComponents) {
         try {
           const scrapeResponse = await fetch(`${supabaseUrl}/functions/v1/scrape-numberblocks`, {
@@ -145,16 +134,15 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({ startNumber: comp, endNumber: comp, isSingleNumber: true }),
           });
-          
+
           const scrapeData = await scrapeResponse.json();
           if (scrapeData.success && scrapeData.data?.[0]?.imageUrl) {
-            // Re-check cache after scrape
             const { data: newEntry } = await supabase
               .from("numberblocks_cache")
               .select("number, storage_path")
               .eq("number", comp)
               .single();
-            
+
             if (newEntry) {
               cachedMap.set(newEntry.number, newEntry.storage_path);
             }
@@ -165,8 +153,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Now fetch all component images
-    const componentImages: Image[] = [];
+    // Fetch all component images as data URIs (handles any format including WebP)
+    const componentImages: { dataUri: string }[] = [];
     for (const comp of components) {
       const storagePath = cachedMap.get(comp);
       if (!storagePath) {
@@ -181,30 +169,29 @@ Deno.serve(async (req) => {
         .from("numberblocks-images")
         .getPublicUrl(storagePath);
 
-      const img = await fetchImage(publicUrl);
-      if (!img) {
+      const imgData = await fetchImageAsDataUri(publicUrl);
+      if (!imgData) {
         return new Response(
           JSON.stringify({ success: false, error: `Failed to load component image for ${comp}` }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      componentImages.push(img);
+      componentImages.push(imgData);
     }
 
-    console.log(`All ${componentImages.length} component images loaded, compositing...`);
+    console.log(`All ${componentImages.length} component images loaded, compositing as SVG...`);
 
-    // Composite images
-    const composite = compositeImages(componentImages);
-    const pngData = await composite.encode();
+    // Create SVG composite
+    const svgContent = compositeAsSvg(componentImages, 400);
 
-    // Upload to storage
+    // Upload SVG to storage
     const paddedNum = number.toString().padStart(3, "0");
-    const storagePath = `comp-${paddedNum}.png`;
+    const storagePath = `comp-${paddedNum}.svg`;
 
     const { error: uploadError } = await supabase.storage
       .from("numberblocks-images")
-      .upload(storagePath, pngData, {
-        contentType: "image/png",
+      .upload(storagePath, new TextEncoder().encode(svgContent), {
+        contentType: "image/svg+xml",
         upsert: true,
       });
 
@@ -230,7 +217,7 @@ Deno.serve(async (req) => {
       .from("numberblocks-images")
       .getPublicUrl(storagePath);
 
-    console.log(`Composite image for ${number} saved at ${storagePath}`);
+    console.log(`Composite SVG for ${number} saved at ${storagePath}`);
 
     return new Response(
       JSON.stringify({
