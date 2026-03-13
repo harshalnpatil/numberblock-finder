@@ -196,40 +196,8 @@ RULES:
 - No background, no extra characters
 - Black outline only, coloring page style`;
 
-    // First, list available models to find the right image generation model
-    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
-    const listResp = await fetch(listUrl);
-    const listData = await listResp.json();
-    
-    // Find an image generation capable model
-    const imageModels = listData.models?.filter((m: any) => 
-      m.name?.includes('image') || m.supportedGenerationMethods?.includes('generateContent')
-    ).map((m: any) => m.name) || [];
-    
-    // Prefer imagen or gemini image model
-    const preferredModels = [
-      'models/gemini-2.0-flash-exp',
-      'models/gemini-2.5-flash-preview-image-generation', 
-      'models/gemini-2.0-flash-preview-image-generation',
-    ];
-    
-    let modelName = '';
-    for (const pref of preferredModels) {
-      if (listData.models?.some((m: any) => m.name === pref)) {
-        modelName = pref;
-        break;
-      }
-    }
-    
-    if (!modelName) {
-      // Fallback: find any model with 'image' in name
-      const imgModel = listData.models?.find((m: any) => m.name?.includes('image'));
-      modelName = imgModel?.name || 'models/gemini-2.0-flash';
-    }
-    
-    console.log(`Using Gemini model: ${modelName}, available image models: ${JSON.stringify(imageModels.slice(0, 10))}`);
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+    // Call Gemini API directly using generateContent with image generation
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(geminiUrl, {
       method: "POST",
