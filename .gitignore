@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
 *.local
 
 # Editor directories and files
@@ -22,3 +23,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Bun lock files (using npm)
+bun.lock
+bun.lockb
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
