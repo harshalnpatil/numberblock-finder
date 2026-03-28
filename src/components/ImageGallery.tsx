@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlertCircle, ImageOff, Loader2, Database, Sparkles, Wand2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface ImageGalleryProps {
   images: NumberImage[];
@@ -248,7 +248,6 @@ function ImageCard({ img, onGenerate, onRegenerate, isGenerating, isRegenerating
 export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
   const [generatingNumbers, setGeneratingNumbers] = useState<Set<number>>(new Set());
   const [regeneratingNumbers, setRegeneratingNumbers] = useState<Set<number>>(new Set());
-  const { toast } = useToast();
 
   const handleGenerate = async (number: number) => {
     setGeneratingNumbers(prev => new Set(prev).add(number));
@@ -257,24 +256,17 @@ export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
       const response = await numberblocksApi.generateWithAI(number);
       
       if (response.success && response.imageUrl) {
-        toast({
-          title: 'Picture created! ✨',
+        toast.success('Picture created! ✨', {
           description: `Made a Numberblock ${number.toLocaleString()} with AI magic!`,
         });
         onImageUpdate?.(number, response.imageUrl);
       } else {
-        toast({
-          title: 'Oops!',
+        toast.error('Oops!', {
           description: response.error || 'Could not create picture',
-          variant: 'destructive',
         });
       }
     } catch (error) {
-      toast({
-        title: 'Oops!',
-        description: 'Something went wrong',
-        variant: 'destructive',
-      });
+      toast.error('Oops!', { description: 'Something went wrong' });
     } finally {
       setGeneratingNumbers(prev => {
         const next = new Set(prev);
@@ -293,24 +285,17 @@ export function ImageGallery({ images, onImageUpdate }: ImageGalleryProps) {
       
       if (response.success && response.data?.[0]?.imageUrl) {
         const strategyLabel = REGEN_STRATEGIES.find(s => s.value === strategy)?.label || strategy;
-        toast({
-          title: `Regenerated with ${strategyLabel}! 🔄`,
+        toast.success(`Regenerated with ${strategyLabel}! 🔄`, {
           description: `New image for Numberblock ${number.toLocaleString()}!`,
         });
         onImageUpdate?.(number, response.data[0].imageUrl);
       } else {
-        toast({
-          title: 'Oops!',
+        toast.error('Oops!', {
           description: response.error || 'Could not regenerate picture',
-          variant: 'destructive',
         });
       }
     } catch (error) {
-      toast({
-        title: 'Oops!',
-        description: 'Something went wrong',
-        variant: 'destructive',
-      });
+      toast.error('Oops!', { description: 'Something went wrong' });
     } finally {
       setRegeneratingNumbers(prev => {
         const next = new Set(prev);

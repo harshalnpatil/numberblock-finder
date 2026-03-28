@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { numberblocksApi, NumberImage, GenerationStrategy, ALL_STRATEGIES } from '@/lib/api/numberblocks';
 import { supabase } from '@/integrations/supabase/client';
 import type { CompareItem } from '@/components/CompareStrip';
@@ -30,8 +30,7 @@ export function useNumberblocksScraper() {
   const [progress, setProgress] = useState<ScrapeProgress>({ current: 0, total: 0, phase: 'idle' });
   const [compareItems, setCompareItems] = useState<CompareItem[]>([]);
   const [compareNumber, setCompareNumber] = useState<number | null>(null);
-  const { toast } = useToast();
-  
+
   // Ref to track cancellation
   const cancelledRef = useRef(false);
 
@@ -58,14 +57,13 @@ export function useNumberblocksScraper() {
           allResults.push(...response.data);
           setImages([...allResults]);
         } else if (response.error) {
-          toast({ title: 'Error', description: response.error, variant: 'destructive' });
+          toast.error('Error', { description: response.error });
         }
       } else {
         for (let i = startNumber; i <= endNumber; i += batchSize) {
           // Check if cancelled
           if (cancelledRef.current) {
-            toast({
-              title: 'Scraping stopped',
+            toast('Scraping stopped', {
               description: `Stopped at ${allResults.length} images`,
             });
             break;
@@ -91,8 +89,7 @@ export function useNumberblocksScraper() {
               allResults.push(...response.data);
               setImages([...allResults]);
             }
-            toast({
-              title: 'Scraping stopped',
+            toast('Scraping stopped', {
               description: `Stopped at ${allResults.length} images`,
             });
             break;
@@ -111,25 +108,23 @@ export function useNumberblocksScraper() {
       
       if (!cancelledRef.current) {
         const successCount = allResults.filter(img => img.imageUrl).length;
-        toast({
-          title: 'Search complete!',
-          description: successCount > 0 
-            ? `Found ${successCount} picture${successCount > 1 ? 's' : ''}!` 
-            : 'No pictures found',
+        toast.success('Search complete!', {
+          description:
+            successCount > 0
+              ? `Found ${successCount} picture${successCount > 1 ? 's' : ''}!`
+              : 'No pictures found',
         });
       }
     } catch (error) {
       console.error('Scrape error:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to find pictures. Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
       setProgress({ current: 0, total: 0, phase: 'idle' });
     }
-  }, [toast]);
+  }, []);
 
   const stopScraping = useCallback(() => {
     cancelledRef.current = true;
@@ -139,11 +134,7 @@ export function useNumberblocksScraper() {
     const validImages = images.filter(img => img.imageUrl);
     
     if (validImages.length === 0) {
-      toast({
-        title: 'No images to download',
-        description: 'Find some pictures first!',
-        variant: 'destructive',
-      });
+      toast.error('No images to download', { description: 'Find some pictures first!' });
       return;
     }
 
@@ -180,8 +171,7 @@ export function useNumberblocksScraper() {
         // Save directly as image file
         saveAs(blob, `numberblock-${img.number}.${extension}`);
         
-        toast({
-          title: 'Download complete!',
+        toast.success('Download complete!', {
           description: `Saved Numberblock ${img.number}!`,
         });
       } else {
@@ -236,22 +226,19 @@ export function useNumberblocksScraper() {
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         saveAs(zipBlob, 'numberblocks-images.zip');
 
-        toast({
-          title: 'Download complete!',
+        toast.success('Download complete!', {
           description: `ZIP created with ${successCount} pictures!`,
         });
       }
     } catch (error) {
       console.error('Download error:', error);
-      toast({
-        title: 'Download failed',
+      toast.error('Download failed', {
         description: error instanceof Error ? error.message : 'Failed to download',
-        variant: 'destructive',
       });
     } finally {
       setIsDownloading(false);
     }
-  }, [images, toast]);
+  }, [images]);
 
   const updateImage = useCallback((number: number, imageUrl: string) => {
     setImages(prev => prev.map(img => 
@@ -300,14 +287,13 @@ export function useNumberblocksScraper() {
     
     await Promise.all(promises);
     
-    toast({
-      title: 'Comparison complete! 🔬',
+    toast.success('Comparison complete! 🔬', {
       description: `Generated Numberblock ${number.toLocaleString()} with ${total} strategies`,
     });
-    
+
     setIsLoading(false);
     setProgress({ current: 0, total: 0, phase: 'idle' });
-  }, [toast]);
+  }, []);
 
   const successfulImageCount = images.filter(img => img.imageUrl).length;
 
