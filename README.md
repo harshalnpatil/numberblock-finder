@@ -1,86 +1,54 @@
-# Welcome to your Lovable project
+# Numberblock Finder
 
-## Project info
+Kid-friendly web app to search for **Numberblocks** character images (wiki scrape, composition, SVG, and AI generation) and download them.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+**Stack:** React 18 · Vite · TypeScript · Tailwind CSS · shadcn-ui · Supabase (edge functions + storage)
 
-## How can I edit this code?
+**Docs:** [Changelog](docs/CHANGELOG.md) · [Product backlog](docs/product_backlog.md)
 
-There are several ways of editing your application.
+## Prerequisites
 
-**Use Lovable**
+- [Node.js](https://nodejs.org/) 18+ (or use [nvm](https://github.com/nvm-sh/nvm))
+- npm (comes with Node)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+Optional: [Bun](https://bun.sh/) if you prefer `bun install` / `bun run` (this repo includes a `bun.lock`).
 
-Changes made via Lovable will be committed automatically to this repo.
+## Setup
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```powershell
+cd numberblock-finder
+npm install
 ```
 
-**Edit a file directly in GitHub**
+### Environment
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Create a `.env` in the project root (same folder as `package.json`) with your Supabase client settings. The app expects the usual Vite variables, for example:
 
-**Use GitHub Codespaces**
+```env
+VITE_SUPABASE_URL=https://<your-project>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon-key>
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Configure edge functions and secrets in the Supabase project as needed for scraping, AI, and image proxying.
 
-## What technologies are used for this project?
+## Scripts
 
-This project is built with:
+| Command | Description |
+| --------| ------------ |
+| `npm run dev` | Dev server (see `vite.config.ts`; default port **8080**) |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview production build locally |
+| `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:coverage` | Vitest with coverage report (`coverage/` + terminal summary) |
+| `npm run test:e2e` | E2E smoke tests (Playwright; starts a dev server on port **5199** so it does not collide with `npm run dev` on 8080) |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+First-time Playwright browsers (if needed):
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```powershell
+npx playwright install chromium
+```
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
-
-This means:
-- ✅ You can use, modify, and distribute this software
-- ✅ You can use it for commercial purposes
-- ⚠️ **Any derivative works must also be open source under GPL-3.0 or compatible license**
-- ⚠️ You must include the original copyright and license notices
-- ⚠️ You must disclose the source code of any modifications
-
-See the [LICENSE](LICENSE) file for full details, or visit <https://www.gnu.org/licenses/gpl-3.0.html>
+This project is licensed under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later). See [LICENSE](LICENSE).
