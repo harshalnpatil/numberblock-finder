@@ -32,3 +32,4 @@ bun.lockb
 /test-results/
 /playwright-report/
 /playwright/.cache/
+.env
