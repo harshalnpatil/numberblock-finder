@@ -37,23 +37,19 @@
 **Stack baseline:**
 
 - Supabase: canonical event and debug case database
-- Sentry: errors and technical observability across all platforms
-- Microsoft Clarity: session replay for browser apps
 - Langfuse: AI traces and evals (only where AI exists)
 - Playwright: synthetic screenshots and regression checks
 
 **Sources of truth:**
 
 - Supabase: product telemetry and unified debug cases
-- Sentry: technical failures
-- Clarity: user session replay
 - Langfuse: AI traces and prompt failures
 
 **Outcome:** Any failure can be inspected via one Supabase debug case record that links all evidence.
 
-**Further thinking (2026-03):** This cross-project stack is **not** started in this repo. It depends on a shared Supabase schema, optional Sentry, and operational ownership (who triages `debug_cases`). **Suggested order:** (1) define a minimal `debug_cases` + `artifacts` schema in one Supabase project; (2) add a tiny client helper to log events from this web app only; (3) add Sentry only if error volume justifies it; (4) Clarity/Langfuse where product asks for session replay or AI evals. Playwright in this repo is **local smoke only** until screenshot storage and CI scheduling exist (Phase 6 in the original vision).
+**Further thinking (2026-03):** This cross-project stack is **not** started in this repo. It depends on a shared Supabase schema and operational ownership (who triages `debug_cases`). **Suggested order:** (1) define a minimal `debug_cases` + `artifacts` schema in one Supabase project; (2) add a tiny client helper to log events from this web app only; (3) Langfuse where product asks for AI evals. Playwright in this repo is **local smoke only** until screenshot storage and CI scheduling exist (Phase 6 in the original vision).
 
-### Phase 1 - Core Foundation (Supabase + Sentry)
+### Phase 1 - Core Foundation (Supabase)
 
 **Goal:** Create a single debugging pipeline used by every project.
 
@@ -99,7 +95,7 @@ Example structure:
 - `severity`
 - `title`
 - `description`
-- `source` (`sentry | n8n | user_report | ai_eval`)
+- `source` (`n8n | user_report | ai_eval`)
 - `status`
 - `created_at`
 
@@ -109,8 +105,6 @@ Example structure:
 - `project_id`
 - `issue_id`
 - `workflow_run_id`
-- `sentry_issue_url`
-- `clarity_session_url`
 - `screenshot_url`
 - `ai_trace_id`
 - `status`
@@ -141,66 +135,6 @@ Example events:
 Acceptance criteria:
 
 - All projects send structured events to Supabase.
-
-#### Task 3 - Install Sentry Across All Projects
-
-Platforms:
-
-- web apps
-- Chrome extensions
-- Node scripts
-- backend services
-
-Configure:
-
-- release version
-- environment
-- project tags
-
-Acceptance criteria:
-
-- Every runtime reports errors to one Sentry organization.
-
-#### Task 4 - Link Sentry Issues to Supabase
-
-Create webhook or worker that:
-
-- receives Sentry issue events
-- inserts `issues` row
-- creates `debug_cases` record
-
-Acceptance criteria:
-
-- Every Sentry issue creates a debug case.
-
-### Phase 3 - Browser Observability
-
-**Goal:** Capture user behavior before bugs.
-
-#### Task 7 - Add Microsoft Clarity to Web Apps
-
-Add Clarity script to:
-
-- Lovable apps
-- personal web apps
-
-Capture:
-
-- session recordings
-- heatmaps
-- user click paths
-
-Acceptance criteria:
-
-- Each user session has replay available.
-
-#### Task 8 - Link Clarity Sessions to Debug Cases
-
-When bug is reported, store `clarity_session_url` inside `debug_cases`.
-
-Acceptance criteria:
-
-- Each bug can link to a session replay.
 
 ### Phase 6 - Synthetic Debug Evidence
 
@@ -233,8 +167,6 @@ Input:
 Fetch:
 
 - Supabase events
-- Sentry issue
-- Clarity session
 - screenshots
 - Langfuse trace
 
@@ -247,10 +179,8 @@ Example:
 ```json
 {
   "issue_summary": "",
-  "stack_trace": "",
   "workflow_inputs": {},
   "workflow_outputs": {},
-  "session_replay": "",
   "screenshot": "",
   "ai_trace": "",
   "repro_steps": []
@@ -266,7 +196,6 @@ Acceptance criteria:
 All projects must:
 
 - log events to Supabase
-- report errors to Sentry
 - create `debug_case` on failures
 
 Debug cases are the primary object AI agents read.
