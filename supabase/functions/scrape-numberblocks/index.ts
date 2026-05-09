@@ -888,7 +888,7 @@ function extractInfoboxImage(html: string, num: number, skipFallback: boolean = 
   // (not a substring). This avoids "100_is_big.png" matching when num=1.
   for (const url of allUrls) {
     if (!isValidCharacterImage(url)) continue;
-    const filename = url.split('/').pop() || '';
+    const filename = getWikiFilename(url);
     const tokens = tokenizeFilename(filename);
     if (tokens.includes(numStr) || tokens.includes(numWithCommas)) {
       return normalizeWikiImageUrl(url);
