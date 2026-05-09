@@ -945,7 +945,7 @@ function extractInfoboxImageFallback(html: string, num: number): string | null {
   // Second pass: filename contains number word as a token (looser, fan-art territory)
   for (const url of allUrls) {
     if (!isValidCharacterImage(url)) continue;
-    const filename = url.split('/').pop() || '';
+    const filename = getWikiFilename(url);
     const tokens = tokenizeFilename(filename).map(t => t.toLowerCase());
     if (tokens.includes(numberName)) {
       return normalizeWikiImageUrl(url);
