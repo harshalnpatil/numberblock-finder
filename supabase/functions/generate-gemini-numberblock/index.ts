@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
+    const country = getCountry(req);
     const { number } = await req.json();
 
     if (!number || typeof number !== "number" || number < 1) {
@@ -181,10 +182,10 @@ Deno.serve(async (req) => {
     }
 
     // Check shared rate limits (same bucket as OpenAI)
-    const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
+    const { delay, ipTotal, globalTotal, perIpThreshold } = await checkAIRateLimits(supabase, clientIP, country);
 
     if (delay > 0) {
-      console.log(`Gemini rate limited: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+      console.log(`Gemini rate limited: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
