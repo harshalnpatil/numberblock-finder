@@ -27,7 +27,7 @@ interface CacheEntry {
 const RATE_LIMITS = {
   perIp: {
     threshold: 20,
-    strictThreshold: 1,
+    strictThreshold: 0,
     windowMs: 5 * 60 * 1000,
     delayPerExcess: 10000,
   },

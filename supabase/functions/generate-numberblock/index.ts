@@ -9,7 +9,7 @@ const corsHeaders = {
 // ============= Rate Limiting =============
 
 const AI_RATE_LIMITS = {
-  perIp: { threshold: 10, strictThreshold: 1, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+  perIp: { threshold: 10, strictThreshold: 0, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
   global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
   maxDelay: 60000,
 };
