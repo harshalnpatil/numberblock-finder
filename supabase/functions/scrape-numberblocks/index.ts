@@ -936,7 +936,7 @@ function extractInfoboxImageFallback(html: string, num: number): string | null {
   // First pass: filename is exactly the number word (e.g. "One.png")
   for (const url of allUrls) {
     if (!isValidCharacterImage(url)) continue;
-    const filename = (url.split('/').pop() || '').split('?')[0].replace(/\.[a-z0-9]+$/i, '');
+    const filename = getWikiFilename(url).replace(/\.[a-z0-9]+$/i, '');
     if (filename.toLowerCase() === numberName) {
       return normalizeWikiImageUrl(url);
     }
