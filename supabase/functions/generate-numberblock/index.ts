@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
+    const country = getCountry(req);
     const { number, force } = await req.json();
 
     if (!number || typeof number !== "number") {
