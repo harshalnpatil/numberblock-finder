@@ -396,6 +396,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
+    const country = getCountry(req);
     const body = await req.json();
     const startNumber = body.startNumber ?? 1;
     const endNumber = body.endNumber ?? 20;
