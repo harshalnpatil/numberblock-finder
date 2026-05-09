@@ -1,0 +1,1 @@
+DELETE FROM public.numberblocks_cache WHERE number = 1;
