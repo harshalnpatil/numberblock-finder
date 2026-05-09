@@ -840,53 +840,82 @@ function isValidCharacterImage(imageUrl: string): boolean {
   return true;
 }
 
+// Extract image URLs from <img> tags. Wiki pages lazy-load images: the real URL
+// lives in data-src while src holds a 1x1 placeholder GIF. We prefer data-src
+// when present so we don't end up with placeholder pixels.
+function extractImageSources(html: string): string[] {
+  const urls: string[] = [];
+  for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = match[0];
+    const dataSrc = tag.match(/\bdata-src="([^"]+)"/i)?.[1];
+    const src = tag.match(/\bsrc="([^"]+)"/i)?.[1];
+    const chosen = (dataSrc && /^https?:/i.test(dataSrc)) ? dataSrc : src;
+    if (chosen && /^https?:/i.test(chosen)) {
+      urls.push(chosen);
+    }
+  }
+  return urls;
+}
+
+// Tokenize a filename into alphanumeric runs, separating digit runs from
+// letter runs so we can match number tokens exactly (e.g. "100_is_big" =>
+// ["100", "is", "big"], not "1" matching inside "100").
+function tokenizeFilename(filename: string): string[] {
+  const base = filename.split('?')[0].replace(/\.[a-z0-9]+$/i, '');
+  return base.split(/[^a-z0-9]+|(?<=\d)(?=[a-z])|(?<=[a-z])(?=\d)/i).filter(Boolean);
+}
+
+// Wikia URLs look like .../images/9/9c/One.png/revision/latest/scale-to-width-down/200?cb=...
+// The actual filename is the segment immediately before /revision/, NOT the last URL segment.
+function getWikiFilename(imageUrl: string): string {
+  const noQuery = imageUrl.split('?')[0];
+  const beforeRevision = noQuery.split('/revision/')[0];
+  return beforeRevision.split('/').pop() || '';
+}
+
+function normalizeWikiImageUrl(imageUrl: string): string {
+  return imageUrl
+    .replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest')
+    .replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
+}
+
 function extractInfoboxImage(html: string, num: number, skipFallback: boolean = false): string | null {
   const numStr = num.toString();
-  const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
-  
-  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
-  
-  // Priority 1: Look for images with the exact number in the URL
-  for (const match of allImgMatches) {
-    let imageUrl = match[1];
-    
-    if (!isValidCharacterImage(imageUrl)) {
-      continue;
-    }
-    
-    const urlPath = imageUrl.split('/').pop()?.split('?')[0] || '';
-    const urlLower = urlPath.toLowerCase();
-    
-    const numWithCommas = num.toLocaleString();
-    if (urlLower.includes(numStr) || urlLower.includes(numWithCommas.replace(/,/g, ''))) {
-      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-      return imageUrl;
+  const numWithCommas = num.toLocaleString().replace(/,/g, '');
+  const allUrls = extractImageSources(html);
+
+  // Priority 1: Look for images whose filename has the exact number as a token
+  // (not a substring). This avoids "100_is_big.png" matching when num=1.
+  for (const url of allUrls) {
+    if (!isValidCharacterImage(url)) continue;
+    const filename = getWikiFilename(url);
+    const tokens = tokenizeFilename(filename);
+    if (tokens.includes(numStr) || tokens.includes(numWithCommas)) {
+      return normalizeWikiImageUrl(url);
     }
   }
   
   // Priority 2: For small numbers, try the infobox patterns
   if (num <= 1000) {
     const infoboxPatterns = [
-      /class="pi-image[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
-      /<aside[^>]*class="[^"]*infobox[^"]*"[^>]*>.*?<img[^>]*src="([^"]+)"[^>]*>/is,
+      /class="pi-image[^"]*"[^>]*>[\s\S]*?<img\b([^>]*)>/i,
+      /<aside\b[^>]*class="[^"]*infobox[^"]*"[^>]*>[\s\S]*?<img\b([^>]*)>/i,
     ];
 
     for (const pattern of infoboxPatterns) {
       const match = html.match(pattern);
       if (match && match[1]) {
-        let imageUrl = match[1];
-        imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-        imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-        
-        if (isValidCharacterImage(imageUrl)) {
-          return imageUrl;
+        const attrs = match[1];
+        const dataSrc = attrs.match(/\bdata-src="([^"]+)"/i)?.[1];
+        const src = attrs.match(/\bsrc="([^"]+)"/i)?.[1];
+        const imageUrl = (dataSrc && /^https?:/i.test(dataSrc)) ? dataSrc : src;
+        if (imageUrl && isValidCharacterImage(imageUrl)) {
+          return normalizeWikiImageUrl(imageUrl);
         }
       }
     }
     
     // Priority 3: Fallback - check if filename contains number word (fan art territory)
-    // Only run if skipFallback is false
     if (!skipFallback) {
       return extractInfoboxImageFallback(html, num);
     }
@@ -895,25 +924,31 @@ function extractInfoboxImage(html: string, num: number, skipFallback: boolean = 
   return null;
 }
 
-// Separate fallback function: Priority 3 - filename contains number word
+// Separate fallback function: Priority 3 - filename matches number word as a token.
+// Example: for num=1, accept "One.png" but reject "Square_Cork_Shaped_One.PNG"
+// (we want the canonical short filename, not modifier-laden variants).
 function extractInfoboxImageFallback(html: string, num: number): string | null {
   if (num > 1000) return null;
   
   const numberName = numberToWord(num).toLowerCase().replace(/[_-]/g, '');
-  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
-  
-  for (const match of allImgMatches) {
-    let imageUrl = match[1];
-    
-    if (!isValidCharacterImage(imageUrl)) {
-      continue;
+  const allUrls = extractImageSources(html);
+
+  // First pass: filename is exactly the number word (e.g. "One.png")
+  for (const url of allUrls) {
+    if (!isValidCharacterImage(url)) continue;
+    const filename = getWikiFilename(url).replace(/\.[a-z0-9]+$/i, '');
+    if (filename.toLowerCase() === numberName) {
+      return normalizeWikiImageUrl(url);
     }
-    
-    const urlLower = imageUrl.toLowerCase();
-    if (urlLower.includes(numberName)) {
-      imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-      imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-      return imageUrl;
+  }
+
+  // Second pass: filename contains number word as a token (looser, fan-art territory)
+  for (const url of allUrls) {
+    if (!isValidCharacterImage(url)) continue;
+    const filename = getWikiFilename(url);
+    const tokens = tokenizeFilename(filename).map(t => t.toLowerCase());
+    if (tokens.includes(numberName)) {
+      return normalizeWikiImageUrl(url);
     }
   }
   
@@ -922,21 +957,11 @@ function extractInfoboxImageFallback(html: string, num: number): string | null {
 
 // Extract first valid character image from a Gallery page
 function extractFirstGalleryImage(html: string, num: number): string | null {
-  const allImgMatches = [...html.matchAll(/<img[^>]*src="([^"]+)"[^>]*>/gi)];
-  
-  for (const match of allImgMatches) {
-    let imageUrl = match[1];
-    
-    if (!isValidCharacterImage(imageUrl)) {
-      continue;
-    }
-    
-    // Gallery pages contain many images - take the first valid one (usually the main character image)
-    imageUrl = imageUrl.replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest');
-    imageUrl = imageUrl.replace(/\/revision\/latest\/smart\/width\/\d+\/height\/\d+/, '/revision/latest');
-    return imageUrl;
+  const allUrls = extractImageSources(html);
+  for (const url of allUrls) {
+    if (!isValidCharacterImage(url)) continue;
+    return normalizeWikiImageUrl(url);
   }
-  
   return null;
 }
 
