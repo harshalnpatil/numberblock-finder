@@ -27,6 +27,7 @@ interface CacheEntry {
 const RATE_LIMITS = {
   perIp: {
     threshold: 20,
+    strictThreshold: 1,
     windowMs: 5 * 60 * 1000,
     delayPerExcess: 10000,
   },
@@ -37,6 +38,9 @@ const RATE_LIMITS = {
   },
   maxDelay: 60000,
 };
+
+// Countries that get the strict per-IP threshold (suspected bot/scraper traffic).
+const STRICT_COUNTRIES = new Set(['CN']);
 
 // ============= Smart Scraping Helpers =============
 
