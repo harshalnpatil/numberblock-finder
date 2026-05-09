@@ -509,12 +509,12 @@ Deno.serve(async (req) => {
     
     // Only check rate limits if we need to make API calls
     if (numbersToScrape.length > 0) {
-      const { delay, ipTotal, globalTotal } = await checkRateLimits(supabase, clientIP);
+      const { delay, ipTotal, globalTotal, perIpThreshold } = await checkRateLimits(supabase, clientIP, country);
       
       if (delay > 0) {
         wasThrottled = true;
         appliedDelay = delay;
-        console.log(`Rate limiting: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+        console.log(`Rate limiting: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       
