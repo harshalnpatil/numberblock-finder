@@ -865,6 +865,14 @@ function tokenizeFilename(filename: string): string[] {
   return base.split(/[^a-z0-9]+|(?<=\d)(?=[a-z])|(?<=[a-z])(?=\d)/i).filter(Boolean);
 }
 
+// Wikia URLs look like .../images/9/9c/One.png/revision/latest/scale-to-width-down/200?cb=...
+// The actual filename is the segment immediately before /revision/, NOT the last URL segment.
+function getWikiFilename(imageUrl: string): string {
+  const noQuery = imageUrl.split('?')[0];
+  const beforeRevision = noQuery.split('/revision/')[0];
+  return beforeRevision.split('/').pop() || '';
+}
+
 function normalizeWikiImageUrl(imageUrl: string): string {
   return imageUrl
     .replace(/\/revision\/latest\/scale-to-width-down\/\d+/, '/revision/latest')
