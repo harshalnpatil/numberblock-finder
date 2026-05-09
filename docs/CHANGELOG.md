@@ -6,6 +6,14 @@ The format is loosely inspired by [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## 2026-05-09
+
+### Abuse mitigation
+
+- **Geo-tiered rate limits:** AI generation (`generate-numberblock`, `generate-gemini-numberblock`) and `scrape-numberblocks` now apply a stricter per-IP threshold (1 request per window) for requests from countries in a `STRICT_COUNTRIES` set (currently `CN`), reusing the existing progressive-delay mechanism. Default-tier limits, global limits, and user-facing behavior are unchanged.
+
+---
+
 ## 2026-03-28
 
 ### Hygiene (Phase 1 backlog)

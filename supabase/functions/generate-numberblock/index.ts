@@ -9,10 +9,14 @@ const corsHeaders = {
 // ============= Rate Limiting =============
 
 const AI_RATE_LIMITS = {
-  perIp: { threshold: 10, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+  perIp: { threshold: 10, strictThreshold: 0, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
   global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
   maxDelay: 60000,
 };
+
+// Countries that get the strict per-IP threshold. Mostly used to throttle
+// regions where we have no real audience but see suspected bot/scraper traffic.
+const STRICT_COUNTRIES = new Set(['CN']);
 
 function getClientIP(req: Request): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
@@ -21,9 +25,23 @@ function getClientIP(req: Request): string {
     || 'unknown';
 }
 
-async function checkAIRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number }> {
+function getCountry(req: Request): string {
+  return (req.headers.get('cf-ipcountry')
+    || req.headers.get('x-country-code')
+    || req.headers.get('x-vercel-ip-country')
+    || 'unknown').toUpperCase();
+}
+
+function getPerIpThreshold(country: string): number {
+  return STRICT_COUNTRIES.has(country)
+    ? AI_RATE_LIMITS.perIp.strictThreshold
+    : AI_RATE_LIMITS.perIp.threshold;
+}
+
+async function checkAIRateLimits(supabase: any, ip: string, country: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - AI_RATE_LIMITS.perIp.windowMs);
+  const perIpThreshold = getPerIpThreshold(country);
   
   const { data: ipCalls } = await supabase
     .from('rate_limit_log')
@@ -43,14 +61,14 @@ async function checkAIRateLimits(supabase: any, ip: string): Promise<{ delay: nu
   const globalTotal = globalCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
   
   let delay = 0;
-  if (ipTotal > AI_RATE_LIMITS.perIp.threshold) {
-    delay += (ipTotal - AI_RATE_LIMITS.perIp.threshold) * AI_RATE_LIMITS.perIp.delayPerExcess;
+  if (ipTotal > perIpThreshold) {
+    delay += (ipTotal - perIpThreshold) * AI_RATE_LIMITS.perIp.delayPerExcess;
   }
   if (globalTotal > AI_RATE_LIMITS.global.threshold) {
     delay += (globalTotal - AI_RATE_LIMITS.global.threshold) * AI_RATE_LIMITS.global.delayPerExcess;
   }
   
-  return { delay: Math.min(delay, AI_RATE_LIMITS.maxDelay), ipTotal, globalTotal };
+  return { delay: Math.min(delay, AI_RATE_LIMITS.maxDelay), ipTotal, globalTotal, perIpThreshold };
 }
 
 async function logAICall(supabase: any, ip: string): Promise<void> {
@@ -85,6 +103,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
+    const country = getCountry(req);
     const { number, force } = await req.json();
 
     if (!number || typeof number !== "number") {
@@ -133,10 +152,10 @@ Deno.serve(async (req) => {
     }
 
     // Check rate limits before AI generation
-    const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
+    const { delay, ipTotal, globalTotal, perIpThreshold } = await checkAIRateLimits(supabase, clientIP, country);
     
     if (delay > 0) {
-      console.log(`AI generation rate limited: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+      console.log(`AI generation rate limited: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 

@@ -27,6 +27,7 @@ interface CacheEntry {
 const RATE_LIMITS = {
   perIp: {
     threshold: 20,
+    strictThreshold: 0,
     windowMs: 5 * 60 * 1000,
     delayPerExcess: 10000,
   },
@@ -37,6 +38,9 @@ const RATE_LIMITS = {
   },
   maxDelay: 60000,
 };
+
+// Countries that get the strict per-IP threshold (suspected bot/scraper traffic).
+const STRICT_COUNTRIES = new Set(['CN']);
 
 // ============= Smart Scraping Helpers =============
 
@@ -293,8 +297,22 @@ function getClientIP(req: Request): string {
     || 'unknown';
 }
 
-async function checkRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number }> {
+function getCountry(req: Request): string {
+  return (req.headers.get('cf-ipcountry')
+    || req.headers.get('x-country-code')
+    || req.headers.get('x-vercel-ip-country')
+    || 'unknown').toUpperCase();
+}
+
+function getPerIpThreshold(country: string): number {
+  return STRICT_COUNTRIES.has(country)
+    ? RATE_LIMITS.perIp.strictThreshold
+    : RATE_LIMITS.perIp.threshold;
+}
+
+async function checkRateLimits(supabase: any, ip: string, country: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
   const now = new Date();
+  const perIpThreshold = getPerIpThreshold(country);
   
   const ipWindowStart = new Date(now.getTime() - RATE_LIMITS.perIp.windowMs);
   const { data: ipCalls } = await supabase
@@ -314,8 +332,8 @@ async function checkRateLimits(supabase: any, ip: string): Promise<{ delay: numb
   const globalTotal = globalCalls?.reduce((sum: number, r: { api_calls_count: number }) => sum + r.api_calls_count, 0) || 0;
   
   let delay = 0;
-  if (ipTotal > RATE_LIMITS.perIp.threshold) {
-    delay += (ipTotal - RATE_LIMITS.perIp.threshold) * RATE_LIMITS.perIp.delayPerExcess;
+  if (ipTotal > perIpThreshold) {
+    delay += (ipTotal - perIpThreshold) * RATE_LIMITS.perIp.delayPerExcess;
   }
   if (globalTotal > RATE_LIMITS.global.threshold) {
     delay += (globalTotal - RATE_LIMITS.global.threshold) * RATE_LIMITS.global.delayPerExcess;
@@ -324,7 +342,8 @@ async function checkRateLimits(supabase: any, ip: string): Promise<{ delay: numb
   return { 
     delay: Math.min(delay, RATE_LIMITS.maxDelay),
     ipTotal,
-    globalTotal
+    globalTotal,
+    perIpThreshold,
   };
 }
 
@@ -377,6 +396,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
+    const country = getCountry(req);
     const body = await req.json();
     const startNumber = body.startNumber ?? 1;
     const endNumber = body.endNumber ?? 20;
@@ -489,12 +509,12 @@ Deno.serve(async (req) => {
     
     // Only check rate limits if we need to make API calls
     if (numbersToScrape.length > 0) {
-      const { delay, ipTotal, globalTotal } = await checkRateLimits(supabase, clientIP);
+      const { delay, ipTotal, globalTotal, perIpThreshold } = await checkRateLimits(supabase, clientIP, country);
       
       if (delay > 0) {
         wasThrottled = true;
         appliedDelay = delay;
-        console.log(`Rate limiting: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+        console.log(`Rate limiting: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       
