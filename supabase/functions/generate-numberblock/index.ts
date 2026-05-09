@@ -152,10 +152,10 @@ Deno.serve(async (req) => {
     }
 
     // Check rate limits before AI generation
-    const { delay, ipTotal, globalTotal } = await checkAIRateLimits(supabase, clientIP);
+    const { delay, ipTotal, globalTotal, perIpThreshold } = await checkAIRateLimits(supabase, clientIP, country);
     
     if (delay > 0) {
-      console.log(`AI generation rate limited: IP=${clientIP}, ipTotal=${ipTotal}, globalTotal=${globalTotal}, delay=${delay}ms`);
+      console.log(`AI generation rate limited: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
