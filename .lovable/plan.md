@@ -1,69 +1,75 @@
-# Making Numberblock Finder actually accurate
+# Improving Numberblock Finder accuracy
 
-Goal: for any number a kid types, show a **full-color, show-accurate** Numberblock, fast, and never show something obviously wrong.
+Revised after your feedback: no curated dataset, cache + scrape stay the backbone, colour rules split by source, and the backlog gets written first.
 
-## What the audit found
+## Answering your questions first
 
-The pipeline has five strategies but none of them is reliable, and nothing checks the result before it is cached and shown.
+**Are the API keys exposed?** No. `OPENAI_API_KEY` and `GEMINI_API_KEY` are Edge Function secrets — they only exist inside the server-side functions, never in the browser bundle and never in a response. Using them is expected and fine. The one change worth making is routing those calls through the Lovable AI gateway (`LOVABLE_API_KEY`) instead of hitting `api.openai.com` and `generativelanguage.googleapis.com` directly. Not for security — for access to current image models (`dall-e-3` and `gemini-2.5-flash-image` are both a generation behind) without managing two vendor accounts. Your own keys can stay as a fallback.
 
-1. **Wiki scraping is a guessing game.** `scrape-numberblocks` fetches a Fandom page through Firecrawl and picks an image with regex heuristics: filename-token match, then infobox regex, then "first image on the Gallery page" (no number check at all), then a loose filename match the code itself labels "fan art territory". Numbers above 1000 build URLs from digits (`/wiki/5000`) instead of the real page title, so they mostly 404. A `shouldScrape` gate silently refuses to even try most numbers between 101 and 999.
-2. **AI generation asks the model to count.** Both generators send a long prompt saying "EXACTLY N blocks, verify by counting". Image models cannot count reliably past ~10, and there is no verification pass — whatever comes back is cached and served.
-3. **The models are old and the output is the wrong product.** OpenAI still calls `dall-e-3`; Gemini calls `gemini-2.5-flash-image` directly with a raw API key. Both prompts ask for **black-and-white line art**, so even a perfect generation does not look like the show.
-4. **Compose is not a character.** It places the place-value images side by side (100 | 20 | 3) — three separate characters in a row, not one Numberblock.
-5. **SVG is the only correct one, and it's the ugliest.** It guarantees the exact block count by construction, but renders flat rectangles and degrades above ~400.
-6. **Provenance is encoded in filenames.** `ai-007.png`, `svg-007.svg`, `comp-007.svg`; the UI re-derives the badge by string-matching the storage path. There is no `source`/`quality` column, so nothing can be ranked, re-verified, or upgraded over time.
+**Why a curated dataset?** You're right, it's redundant. `numberblocks_cache` already *is* the library — every successful scrape is permanently stored and served from cache. The real problem is that the cache has no idea whether what it stored is correct, so one bad scrape is cached forever. So instead of pre-building a library, we make the cache trustworthy: verify at write time, record the verdict, and re-resolve anything that failed. The library then builds itself from real traffic.
 
-## The path forward
+**Colour rules (your call, adopted):**
+- Wiki scrape -> full-colour official art, as-is.
+- AI generation and compose -> black-and-white coloring-page style, as today.
+- Deterministic SVG render -> stays full colour, since it uses the real per-number palette and costs nothing.
 
-Three ideas, in priority order.
+## What's actually broken
 
-### 1. A curated library is the ground truth for 1–100
+1. **The scraper picks images by guesswork.** Filename-token match, then infobox regex, then *"first image on the Gallery page"* with no number check at all, then a loose match the code itself labels "fan art territory". That last two are how you got a wrong image for 1.
+2. **`shouldScrape` refuses to try.** Numbers 101–999 are only attempted if they're "special" (multiples of 10/25, squares, powers of 2). Everything else is marked `Not expected to have wiki image` without a single request. Above 1000 the URL is built from digits (`/wiki/5000`) instead of the page title, so it 404s.
+3. **Nothing verifies anything.** The AI prompt literally says "VERIFICATION INSTRUCTION: after drawing, verify the count" — that's text to a model that cannot count. No code checks the result. Same for scraped images.
+4. **The cache can't tell sources apart.** Provenance is encoded in filename prefixes (`ai-007.png`, `svg-007.svg`) and the UI re-derives badges by string-matching the path. No `source`, no `verified`, so nothing can be re-checked or upgraded.
+5. **Compose isn't a character.** 123 becomes three separate images in a row.
+6. **The SVG render is correct but ugly** — flat rectangles, and it degrades above ~400.
 
-Stop scraping live for numbers the show actually has. Build a one-time, verified library of the canonical full-color art for 1–100, stored in the bucket and marked as `curated` in the database. Curated always wins, is served instantly, and costs nothing per search.
+## Plan
 
-Building it: run the existing scraper offline in batch over 1–100, then run a **vision review pass** (a vision model checks "is this a single Numberblocks character, and does it show N blocks?") and flag anything that fails for manual replacement. This is an admin job in Advanced mode, not something a visitor triggers.
+### Step 0 — write the backlog first
 
-### 2. A show-accurate renderer replaces the flat SVG
+Before any code, add the full phased breakdown below to `docs/product_backlog.md` as numbered, prioritised, estimated tasks in the existing table format, so the work survives being done in pieces.
 
-Rewrite the deterministic renderer to look like the show instead of like a spreadsheet: correct per-number palette, 3D-ish cube faces with highlight and shadow edges, the show's eye/mouth style, simple limbs, and the Numberling above the head. It keeps the one property nothing else has — **the block count is always exactly right** — and becomes the safety net that is never wrong, only ever less pretty than official art.
+### Step 1 — make the cache trustworthy (P0)
 
-### 3. AI becomes reference-conditioned and verified, not free-form
+- Add `source` (`wiki | ai | render | compose`), `model`, `verified`, `verification_note`, `verified_at` to `numberblocks_cache`; backfill from the existing path prefixes; UI badges read the column instead of parsing filenames.
+- New `verify-numberblock` function: given an image and a target number, a vision model answers "one Numberblocks character? how many blocks? correct number shown?". Called before anything is cached.
+- A scrape that fails verification is not cached as the answer — it falls through to the next strategy.
 
-- Move both generators onto the Lovable AI gateway with current premium image models (quality-first, as chosen).
-- **Condition on a reference image**: send the deterministic render of the same number *as an input image* and ask the model to repaint it in the show's style while preserving the exact block layout. This converts "count N cubes" (which models fail) into "restyle this arrangement" (which they do well).
-- **Verify before caching**: a vision model checks the output for block count, single character, one face, and full color. On failure, retry once, then fall back to the deterministic render. Nothing unverified ever reaches a kid's screen.
-- Prompts move to one shared module so the scraper fallback and the direct endpoints cannot drift apart.
-- Compose is retired as a user-facing strategy; the renderer handles multi-digit properly.
+### Step 2 — fix the scraper (P0)
 
-### Resolution order for any number
+- Delete the "first gallery image" fallback and the loose fan-art match; require a positive number match or infobox position, then verification.
+- Remove `shouldScrape` gating for 1–100 (try every number), and treat "wiki has no page" as a real, cached negative result rather than a guess made up front.
+- Resolve real page titles instead of constructing them, so `_(character)`, `_(number)` and word-form pages stop being coin flips.
+
+### Step 3 — improve the SVG renderer (P1)
+
+Keep the exact-count guarantee, lose the spreadsheet look: 3D cube faces with highlight/shadow edges, show-style eyes and mouth, proper limbs, Numberling above the head, and correct stacking for tens/hundreds. This becomes the never-wrong fallback.
+
+### Step 4 — better AI generation (P1)
+
+- Route through the Lovable AI gateway on current premium image models.
+- **Reference-conditioned**: send the deterministic render of the same number as an input image and ask the model to redraw it as clean coloring-page line art, preserving the exact block layout. This replaces "count to 47" with "restyle this", which models actually do well.
+- Verify the output, retry once, then fall back to the render. One shared prompt module so the scraper's fallback and the direct endpoints stop drifting apart.
+
+### Resolution order
 
 ```text
-curated library  ->  verified wiki scrape  ->  reference-conditioned AI (verified)
-                                           ->  deterministic render (always correct)
+cache (verified)  ->  wiki scrape (verified, full colour)
+                  ->  reference-conditioned AI (verified, B&W)
+                  ->  deterministic render (always correct)
 ```
 
-## Phasing
-
-**Phase 1 — numbers 1 to 100 (this build)**
-Curated library, show-accurate renderer, reference-conditioned + verified AI, provenance columns, resolution order above.
-
-**Phase 2+ — added to `docs/product_backlog.md`, not built now**
+### Backlog beyond this build
 
 | Range | Approach |
 | --- | --- |
-| 101–1000 | Drop the `shouldScrape` guess; resolve real wiki titles from the wiki's own page list, cache the number→title map. Renderer draws hundred-slabs plus remainder. |
-| 1,001–10,000 | No per-cube drawing. Renderer switches to labelled place-value towers (thousand slabs, hundred slabs, tens, ones) that stay countable at a glance. |
-| 10,000–1,000,000 | Show's own convention for giant numbers: a small number of large "mega-blocks" with a scale legend, plus the Numberling. |
-| Beyond 1,000,000 | Symbolic single figure with magnitude naming (million, billion) — accuracy shifts from "count the cubes" to "name the magnitude correctly". |
+| 101–1000 | Real wiki title resolution from the wiki's page list; renderer draws hundred-slabs plus remainder. |
+| 1,001–10,000 | Renderer switches to labelled place-value towers instead of per-cube drawing. |
+| 10,000–1,000,000 | Mega-blocks with a scale legend, plus the Numberling. |
+| Above 1,000,000 | Symbolic figure with magnitude naming; accuracy becomes "names the magnitude right". |
+| Ops | Retire compose; add an accuracy dashboard over `verified` so failure rate is measurable. |
 
-Each tier is a renderer mode, so the guarantee "the picture is never lying about the number" holds all the way up.
+## Technical notes
 
-## Technical detail
-
-- **Schema**: add `source` (`curated | wiki | ai | render`), `model`, `verified_at`, `verification_score`, and `is_primary` to `numberblocks_cache`; backfill from the existing path prefixes and stop parsing filenames in the UI. Storage keeps the deterministic paths.
-- **New shared module** `supabase/functions/_shared/`: number→word, palette, block layout, prompt builder, and the vision verifier — used by every function.
-- **New function** `verify-numberblock`: takes an image URL plus the target number, returns `{ ok, blockCount, issues[] }` from a vision model via the Lovable AI gateway.
-- **New function** `curate-numberblocks`: admin batch job over a range — scrape, verify, mark curated or flag.
-- **Rewrites**: `generate-svg-numberblock` becomes the show-accurate renderer; `generate-numberblock` and `generate-gemini-numberblock` move to the Lovable AI gateway with reference-image input, shared prompt, and the verify-then-cache loop; `scrape-numberblocks` loses `shouldScrape` for 1–100, gains verification on the gallery/fallback paths, and delegates its AI fallback instead of duplicating prompts.
-- **Frontend**: strategy list becomes Wiki / Render / AI / Compare; badges read the new `source` column; Compare shows the verification result per strategy so quality is visible.
-- **Cost**: premium image models only run on a cache miss for a number with no curated or verified wiki art — the library absorbs the common traffic.
+- New `supabase/functions/_shared/` module: number→word, palette, block layout, prompt builder, verifier client — replaces the two duplicated copies of the prompt and structure guide.
+- Verification uses a vision chat model via the gateway; it runs on cache-miss writes only, so it does not add cost to cache hits.
+- Migration adds columns with defaults and a backfill; no data loss, existing storage paths unchanged.
