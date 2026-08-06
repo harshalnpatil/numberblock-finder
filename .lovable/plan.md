@@ -1,72 +1,69 @@
-## Goal
+# Making Numberblock Finder actually accurate
 
-Reduce abuse risk from regions that aren't part of your real audience (starting with China) without hard-blocking anyone. We apply a much stricter per-IP rate limit on the costly endpoints when the request originates from a "strict" country, while keeping the user-facing behavior identical to existing rate limiting (progressive delay — no new error, no block).
+Goal: for any number a kid types, show a **full-color, show-accurate** Numberblock, fast, and never show something obviously wrong.
 
-## Scope
+## What the audit found
 
-Apply tiered limits to the costly endpoints only. Cache reads, page loads, and `proxy-image` remain untouched.
+The pipeline has five strategies but none of them is reliable, and nothing checks the result before it is cached and shown.
 
-- `generate-numberblock` (OpenAI + dispatches compose)
-- `generate-gemini-numberblock` (Gemini)
-- `scrape-numberblocks` (Firecrawl quota)
+1. **Wiki scraping is a guessing game.** `scrape-numberblocks` fetches a Fandom page through Firecrawl and picks an image with regex heuristics: filename-token match, then infobox regex, then "first image on the Gallery page" (no number check at all), then a loose filename match the code itself labels "fan art territory". Numbers above 1000 build URLs from digits (`/wiki/5000`) instead of the real page title, so they mostly 404. A `shouldScrape` gate silently refuses to even try most numbers between 101 and 999.
+2. **AI generation asks the model to count.** Both generators send a long prompt saying "EXACTLY N blocks, verify by counting". Image models cannot count reliably past ~10, and there is no verification pass — whatever comes back is cached and served.
+3. **The models are old and the output is the wrong product.** OpenAI still calls `dall-e-3`; Gemini calls `gemini-2.5-flash-image` directly with a raw API key. Both prompts ask for **black-and-white line art**, so even a perfect generation does not look like the show.
+4. **Compose is not a character.** It places the place-value images side by side (100 | 20 | 3) — three separate characters in a row, not one Numberblock.
+5. **SVG is the only correct one, and it's the ugliest.** It guarantees the exact block count by construction, but renders flat rectangles and degrades above ~400.
+6. **Provenance is encoded in filenames.** `ai-007.png`, `svg-007.svg`, `comp-007.svg`; the UI re-derives the badge by string-matching the storage path. There is no `source`/`quality` column, so nothing can be ranked, re-verified, or upgraded over time.
 
-`compose-numberblock` is cheap (no third-party paid API) and is already gated behind `generate-numberblock`, so we leave it as-is.
+## The path forward
 
-## Country detection
+Three ideas, in priority order.
 
-Read country from request headers in this order, fall back to "unknown":
-- `cf-ipcountry`
-- `x-country-code`
-- `x-vercel-ip-country`
+### 1. A curated library is the ground truth for 1–100
 
-Unknown country → treated as default tier (no false positives).
+Stop scraping live for numbers the show actually has. Build a one-time, verified library of the canonical full-color art for 1–100, stored in the bucket and marked as `curated` in the database. Curated always wins, is served instantly, and costs nothing per search.
 
-## Tiered rate limits
+Building it: run the existing scraper offline in batch over 1–100, then run a **vision review pass** (a vision model checks "is this a single Numberblocks character, and does it show N blocks?") and flag anything that fails for manual replacement. This is an admin job in Advanced mode, not something a visitor triggers.
 
-Configurable constants in each function. Starting values:
+### 2. A show-accurate renderer replaces the flat SVG
+
+Rewrite the deterministic renderer to look like the show instead of like a spreadsheet: correct per-number palette, 3D-ish cube faces with highlight and shadow edges, the show's eye/mouth style, simple limbs, and the Numberling above the head. It keeps the one property nothing else has — **the block count is always exactly right** — and becomes the safety net that is never wrong, only ever less pretty than official art.
+
+### 3. AI becomes reference-conditioned and verified, not free-form
+
+- Move both generators onto the Lovable AI gateway with current premium image models (quality-first, as chosen).
+- **Condition on a reference image**: send the deterministic render of the same number *as an input image* and ask the model to repaint it in the show's style while preserving the exact block layout. This converts "count N cubes" (which models fail) into "restyle this arrangement" (which they do well).
+- **Verify before caching**: a vision model checks the output for block count, single character, one face, and full color. On failure, retry once, then fall back to the deterministic render. Nothing unverified ever reaches a kid's screen.
+- Prompts move to one shared module so the scraper fallback and the direct endpoints cannot drift apart.
+- Compose is retired as a user-facing strategy; the renderer handles multi-digit properly.
+
+### Resolution order for any number
 
 ```text
-STRICT_COUNTRIES = ["CN"]
-
-AI generation (generate-numberblock + generate-gemini-numberblock):
-  default tier:  perIp 10 / 10min   (unchanged)
-  strict tier:   perIp 1  / 10min
-  global:        50 / 10min          (unchanged, shared)
-
-Scraping (scrape-numberblocks):
-  default tier:  perIp 20 / 5min    (unchanged)
-  strict tier:   perIp 1  / 5min
-  global:        100 / 1min          (unchanged)
+curated library  ->  verified wiki scrape  ->  reference-conditioned AI (verified)
+                                           ->  deterministic render (always correct)
 ```
 
-Behavior reuses the existing progressive-delay mechanism — once a strict-tier IP exceeds the threshold, the same `delayPerExcess` math applies and the response is delivered after the delay (capped at `maxDelay`). From the client's perspective it looks identical to a normal user hitting the standard limit; no new error code, no region message.
+## Phasing
 
-## Implementation steps
+**Phase 1 — numbers 1 to 100 (this build)**
+Curated library, show-accurate renderer, reference-conditioned + verified AI, provenance columns, resolution order above.
 
-1. In `generate-numberblock/index.ts`: 
-   - Add `getCountry(req)` helper alongside `getClientIP`.
-   - Add `STRICT_COUNTRIES` constant and a `getPerIpThreshold(country)` helper that returns `1` for strict, `10` otherwise.
-   - In `checkAIRateLimits`, accept the country (or threshold) and use it in place of the hard-coded `AI_RATE_LIMITS.perIp.threshold` for the IP check. Global stays the same.
-2. Mirror the same change in `generate-gemini-numberblock/index.ts` (it already shares the `generate-numberblock` endpoint key in `rate_limit_log`, so the budget remains unified).
-3. In `scrape-numberblocks/index.ts`: same pattern with its own `STRICT_COUNTRIES` and `perIp` strict value of `1`.
-4. Deploy the three functions.
-5. Verify with `curl_edge_functions`:
-   - Call `generate-numberblock` twice with `cf-ipcountry: CN` for the same fake IP (use `x-forwarded-for`) → second call should be delayed.
-   - Call it 5× with `cf-ipcountry: US` → no delay yet (well under 10).
-   - Repeat for the Gemini and scrape functions.
-6. Update `docs/CHANGELOG.md` with a one-liner.
+**Phase 2+ — added to `docs/product_backlog.md`, not built now**
 
-## Out of scope
+| Range | Approach |
+| --- | --- |
+| 101–1000 | Drop the `shouldScrape` guess; resolve real wiki titles from the wiki's own page list, cache the number→title map. Renderer draws hundred-slabs plus remainder. |
+| 1,001–10,000 | No per-cube drawing. Renderer switches to labelled place-value towers (thousand slabs, hundred slabs, tens, ones) that stay countable at a glance. |
+| 10,000–1,000,000 | Show's own convention for giant numbers: a small number of large "mega-blocks" with a scale legend, plus the Numberling. |
+| Beyond 1,000,000 | Symbolic single figure with magnitude naming (million, billion) — accuracy shifts from "count the cubes" to "name the magnitude correctly". |
 
-- No DB migration (existing `rate_limit_log` row shape works as-is).
-- No frontend changes.
-- No new error responses or UI messages.
-- No blocking — strict-tier callers can still get through, just throttled aggressively.
+Each tier is a renderer mode, so the guarantee "the picture is never lying about the number" holds all the way up.
 
-## Easy future tweaks
+## Technical detail
 
-- Add more countries: append to `STRICT_COUNTRIES`.
-- Make stricter or looser: change the strict-tier threshold constant.
-- Promote to a tiny `_shared/geo.ts` if we want to dedupe across functions later.
-
-Ready to switch to build mode whenever you approve.
+- **Schema**: add `source` (`curated | wiki | ai | render`), `model`, `verified_at`, `verification_score`, and `is_primary` to `numberblocks_cache`; backfill from the existing path prefixes and stop parsing filenames in the UI. Storage keeps the deterministic paths.
+- **New shared module** `supabase/functions/_shared/`: number→word, palette, block layout, prompt builder, and the vision verifier — used by every function.
+- **New function** `verify-numberblock`: takes an image URL plus the target number, returns `{ ok, blockCount, issues[] }` from a vision model via the Lovable AI gateway.
+- **New function** `curate-numberblocks`: admin batch job over a range — scrape, verify, mark curated or flag.
+- **Rewrites**: `generate-svg-numberblock` becomes the show-accurate renderer; `generate-numberblock` and `generate-gemini-numberblock` move to the Lovable AI gateway with reference-image input, shared prompt, and the verify-then-cache loop; `scrape-numberblocks` loses `shouldScrape` for 1–100, gains verification on the gallery/fallback paths, and delegates its AI fallback instead of duplicating prompts.
+- **Frontend**: strategy list becomes Wiki / Render / AI / Compare; badges read the new `source` column; Compare shows the verification result per strategy so quality is visible.
+- **Cost**: premium image models only run on a cache miss for a number with no curated or verified wiki art — the library absorbs the common traffic.
