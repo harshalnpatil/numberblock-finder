@@ -33,6 +33,9 @@ export function useNumberblocksScraper() {
 
   // Ref to track cancellation
   const cancelledRef = useRef(false);
+  // Cancellation token for a running "compare all strategies" run
+  const compareAbortRef = useRef<AbortController | null>(null);
+
 
   const scrapeImages = useCallback(async (startNumber: number, endNumber: number, strategy: GenerationStrategy = 'auto') => {
     setIsLoading(true);
