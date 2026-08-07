@@ -128,7 +128,20 @@ export function useNumberblocksScraper() {
 
   const stopScraping = useCallback(() => {
     cancelledRef.current = true;
+    // Compare mode fires all strategies in parallel; abort the in-flight
+    // requests and release the UI immediately instead of waiting for them.
+    if (compareAbortRef.current) {
+      compareAbortRef.current.abort();
+      compareAbortRef.current = null;
+      setCompareItems(prev =>
+        prev.map(item => (item.loading ? { ...item, loading: false, error: 'Stopped' } : item))
+      );
+      setIsLoading(false);
+      setProgress({ current: 0, total: 0, phase: 'idle' });
+      toast('Comparison stopped');
+    }
   }, []);
+
 
   const downloadImages = useCallback(async () => {
     const validImages = images.filter(img => img.imageUrl);
