@@ -206,13 +206,16 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        // dall-e-3 has been retired by OpenAI; gpt-image-1-mini is the
+        // current cost-efficient image model on the same endpoint.
+        model: 'gpt-image-1-mini',
         prompt,
         n: 1,
         size: '1024x1024',
-        quality: 'standard',
+        quality: 'low',
       }),
     });
+
 
     if (!response.ok) {
       if (response.status === 429) {
