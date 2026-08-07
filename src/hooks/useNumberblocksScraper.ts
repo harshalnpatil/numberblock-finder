@@ -33,6 +33,9 @@ export function useNumberblocksScraper() {
 
   // Ref to track cancellation
   const cancelledRef = useRef(false);
+  // Cancellation token for a running "compare all strategies" run
+  const compareAbortRef = useRef<AbortController | null>(null);
+
 
   const scrapeImages = useCallback(async (startNumber: number, endNumber: number, strategy: GenerationStrategy = 'auto') => {
     setIsLoading(true);
@@ -128,7 +131,20 @@ export function useNumberblocksScraper() {
 
   const stopScraping = useCallback(() => {
     cancelledRef.current = true;
+    // Compare mode fires all strategies in parallel; abort the in-flight
+    // requests and release the UI immediately instead of waiting for them.
+    if (compareAbortRef.current) {
+      compareAbortRef.current.abort();
+      compareAbortRef.current = null;
+      setCompareItems(prev =>
+        prev.map(item => (item.loading ? { ...item, loading: false, error: 'Stopped' } : item))
+      );
+      setIsLoading(false);
+      setProgress({ current: 0, total: 0, phase: 'idle' });
+      toast('Comparison stopped');
+    }
   }, []);
+
 
   const downloadImages = useCallback(async () => {
     const validImages = images.filter(img => img.imageUrl);
@@ -253,7 +269,11 @@ export function useNumberblocksScraper() {
     setImages([]);
     setCompareNumber(number);
     cancelledRef.current = false;
-    
+
+    const controller = new AbortController();
+    compareAbortRef.current = controller;
+    const { signal } = controller;
+
     const strategies = ALL_STRATEGIES;
     const total = strategies.length;
     setProgress({ current: 0, total, phase: 'comparing' });
@@ -268,16 +288,19 @@ export function useNumberblocksScraper() {
     }));
     setCompareItems([...initialItems]);
     
-    // Fire all strategies in parallel, update as each resolves
+    // Fire all strategies in parallel, update as each resolves.
+    // Late results are discarded once the run has been stopped.
     const promises = strategies.map(async (s, idx) => {
       try {
         const result = await numberblocksApi.scrapeImages(number, number, s.value);
+        if (signal.aborted) return;
         const image = result.success && result.data?.[0] ? result.data[0] : null;
         setCompareItems(prev => prev.map((item, i) =>
           i === idx ? { ...item, image, loading: false, error: !image ? (result.error || 'No result') : undefined } : item
         ));
         setProgress(prev => ({ ...prev, current: prev.current + 1 }));
       } catch (err) {
+        if (signal.aborted) return;
         setCompareItems(prev => prev.map((item, i) =>
           i === idx ? { ...item, loading: false, error: 'Failed' } : item
         ));
@@ -286,7 +309,10 @@ export function useNumberblocksScraper() {
     });
     
     await Promise.all(promises);
-    
+
+    if (signal.aborted) return;
+    compareAbortRef.current = null;
+
     toast.success('Comparison complete! 🔬', {
       description: `Generated Numberblock ${number.toLocaleString()} with ${total} strategies`,
     });
@@ -294,6 +320,7 @@ export function useNumberblocksScraper() {
     setIsLoading(false);
     setProgress({ current: 0, total: 0, phase: 'idle' });
   }, []);
+
 
   const successfulImageCount = images.filter(img => img.imageUrl).length;
 

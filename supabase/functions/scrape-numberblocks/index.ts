@@ -206,14 +206,16 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        // dall-e-3 has been retired by OpenAI; gpt-image-1-mini is the
+        // current cost-efficient image model on the same endpoint.
+        model: 'gpt-image-1-mini',
         prompt,
         n: 1,
         size: '1024x1024',
-        response_format: 'b64_json',
-        quality: 'standard',
+        quality: 'low',
       }),
     });
+
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -225,20 +227,34 @@ Result: one Numberblocks character, black and white line art, coloring page styl
     }
 
     const data = await response.json();
+    // The images endpoint may return either inline base64 or a hosted URL
+    // depending on the model, so support both instead of forcing a
+    // response_format the endpoint may reject.
+    let bytes: Uint8Array | null = null;
     const base64Data = data.data?.[0]?.b64_json;
-    
-    if (!base64Data) {
+    const imageUrlFromApi = data.data?.[0]?.url;
+
+    if (base64Data) {
+      const binaryString = atob(base64Data);
+      bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+    } else if (imageUrlFromApi) {
+      const imgResponse = await fetch(imageUrlFromApi);
+      if (imgResponse.ok) {
+        bytes = new Uint8Array(await imgResponse.arrayBuffer());
+      }
+    }
+
+    if (!bytes) {
+      console.error('No image in response:', JSON.stringify(data));
       return { success: false, error: 'No image generated' };
     }
 
     // DALL-E returns PNG images
     const imageType = 'png';
-    
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
+
 
     const paddedNum = number.toString().padStart(3, '0');
     const storagePath = `ai-${paddedNum}.${imageType}`;

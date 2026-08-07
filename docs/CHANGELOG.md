@@ -6,7 +6,17 @@ The format is loosely inspired by [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## 2026-08-07
+
+### Fixes
+
+- **OpenAI image generation restored:** `dall-e-3` was retired upstream and the request also sent an unsupported `response_format` parameter, so every OpenAI generation returned 500. Both `generate-numberblock` and `scrape-numberblocks` now call `gpt-image-1-mini` without `response_format`, and accept either `b64_json` or a hosted `url` in the response.
+- **Stop button cancels Compare All:** `compareStrategies` now registers an `AbortController` that `stopScraping` triggers, so the Stop button immediately clears the spinners, marks pending strategies as "Stopped", and releases the loading state instead of waiting for all five requests.
+
+---
+
 ## 2026-05-09
+
 
 ### Abuse mitigation
 
