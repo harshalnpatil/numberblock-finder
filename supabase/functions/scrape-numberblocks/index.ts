@@ -55,10 +55,6 @@ const STRICT_COUNTRIES = new Set(['CN']);
 
 // ============= Smart Scraping Helpers =============
 
-function isPowerOf2(n: number): boolean {
-  return n > 0 && (n & (n - 1)) === 0;
-}
-
 function isPowerOf10(n: number): boolean {
   if (n < 10) return false;
   let num = n;
@@ -69,11 +65,6 @@ function isPowerOf10(n: number): boolean {
   return num === 1;
 }
 
-function hasRepeatingDigits(n: number): boolean {
-  const str = n.toString();
-  if (str.length < 2) return false;
-  return str.split('').every(c => c === str[0]);
-}
 
 /**
  * Whether it is worth asking the wiki at all.
