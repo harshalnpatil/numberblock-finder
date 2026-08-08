@@ -989,15 +989,9 @@ function extractInfoboxImageFallback(html: string, num: number): string | null {
   return null;
 }
 
-// Extract first valid character image from a Gallery page
-function extractFirstGalleryImage(html: string, num: number): string | null {
-  const allUrls = extractImageSources(html);
-  for (const url of allUrls) {
-    if (!isValidCharacterImage(url)) continue;
-    return normalizeWikiImageUrl(url);
-  }
-  return null;
-}
+// (The "first image on the Gallery page" fallback was removed: it accepted any
+// image regardless of which number it depicted, which is how wrong art got cached.)
+
 
 function numberToWord(num: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
