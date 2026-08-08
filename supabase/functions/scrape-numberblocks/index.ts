@@ -442,14 +442,14 @@ Deno.serve(async (req) => {
     // Check which numbers are already cached
     const { data: cachedEntries } = await supabase
       .from('numberblocks_cache')
-      .select('number, storage_path')
+      .select('number, storage_path, source, verified, model')
       .gte('number', startNumber)
       .lte('number', endNumber);
     
-    const cachedMap = new Map<number, string>();
+    const cachedMap = new Map<number, CacheEntry>();
     if (cachedEntries) {
-      for (const entry of cachedEntries) {
-        cachedMap.set(entry.number, entry.storage_path);
+      for (const entry of cachedEntries as CacheEntry[]) {
+        cachedMap.set(entry.number, entry);
       }
     }
     
@@ -461,16 +461,15 @@ Deno.serve(async (req) => {
     // Build list of numbers to scrape vs return from cache vs skip
     for (let num = startNumber; num <= endNumber; num++) {
       if (cachedMap.has(num)) {
-        // Return from cache
-        const storagePath = cachedMap.get(num)!;
+        // Return from cache - provenance comes from the row, not the filename
+        const entry = cachedMap.get(num)!;
         const { data: { publicUrl } } = supabase.storage
           .from('numberblocks-images')
-          .getPublicUrl(storagePath);
+          .getPublicUrl(entry.storage_path);
         
-        const isAIGenerated = storagePath.startsWith('ai-') || storagePath.startsWith('gem-');
-        const isComposed = storagePath.startsWith('comp-');
-        const generationMethod = storagePath.startsWith('ai-') ? 'openai' as const
-          : storagePath.startsWith('gem-') ? 'gemini' as const
+        const source = (entry.source ?? 'unknown') as ImageSource;
+        const generationMethod = entry.model === 'gemini' ? 'gemini' as const
+          : entry.model === 'openai' ? 'openai' as const
           : undefined;
         
         results.push({
@@ -478,13 +477,16 @@ Deno.serve(async (req) => {
           imageUrl: publicUrl,
           pageUrl: `https://numberblocks.fandom.com/wiki/${numberToWord(num)}`,
           cached: true,
-          aiGenerated: isAIGenerated,
+          source,
+          verified: entry.verified ?? false,
+          aiGenerated: source === 'ai',
           generationMethod,
-          composed: isComposed,
+          composed: source === 'compose',
+          svgGenerated: source === 'render',
         });
       } else if (!shouldScrape(num)) {
-        // Skip scraping for non-special numbers
-        console.log(`Skipping scrape for ${num} (not a special number)`);
+        // Only very large non-round numbers are skipped outright now
+        console.log(`Skipping scrape for ${num} (no wiki page expected)`);
         results.push({
           number: num,
           imageUrl: null,
@@ -496,6 +498,7 @@ Deno.serve(async (req) => {
         numbersToScrape.push(num);
       }
     }
+
     
     console.log(`Need to scrape ${numbersToScrape.length} new images (${results.filter(r => r.skipScrape).length} skipped as non-special)`);
 
