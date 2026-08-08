@@ -235,6 +235,10 @@ Deno.serve(async (req) => {
         number: number,
         storage_path: storagePath,
         original_url: "svg-generated",
+        source: "render",
+        verified: true,
+        verification_note: "deterministic render",
+        verified_at: new Date().toISOString(),
       },
       { onConflict: "number" }
     );
