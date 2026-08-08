@@ -65,49 +65,18 @@ function hasRepeatingDigits(n: number): boolean {
 }
 
 /**
- * Determines if a number is "special" enough to warrant a Firecrawl API call.
- * 
- * Rule A: Always try 1-100
- * Rule B: 101-1000 - only special numbers (multiples of 10/25/50, perfect squares, powers of 2, repeating digits)
- * Rule C: Above 1000 - only powers of 10 and named magnitudes
+ * Whether it is worth asking the wiki at all.
+ *
+ * We no longer guess which numbers are "special": every number up to 1000 gets
+ * a real attempt, because the wiki title lookup below is a cheap API call and
+ * "no page exists" is a real answer rather than a guess made up front.
+ * Above 1000 only powers of ten plausibly have a page.
  */
 function shouldScrape(num: number): boolean {
-  // Rule A: Always try 1-100
-  if (num <= 100) return true;
-  
-  // Rule B: 101-1000 - only special numbers
-  if (num <= 1000) {
-    // Multiples of 10, 25, 50
-    if (num % 10 === 0) return true;
-    if (num % 25 === 0) return true;
-    if (num % 50 === 0) return true;
-    
-    // Perfect squares (121, 144, 169, 196, 225, 256, 289, 324, 361, 400...)
-    const sqrt = Math.sqrt(num);
-    if (Number.isInteger(sqrt)) return true;
-    
-    // Powers of 2 (128, 256, 512)
-    if (isPowerOf2(num)) return true;
-    
-    // Repeating digits (111, 222, 333...)
-    if (hasRepeatingDigits(num)) return true;
-    
-    return false;
-  }
-  
-  // Rule C: Above 1000 - only very special
-  // Powers of 10 (1000, 10000, 100000, 1000000...)
-  if (isPowerOf10(num)) return true;
-  
-  // Named magnitudes that appear in educational material
-  const namedMagnitudes = [
-    1000, 10000, 100000, 1000000, 
-    10000000, 100000000, 1000000000
-  ];
-  if (namedMagnitudes.includes(num)) return true;
-  
-  return false;
+  if (num <= 1000) return true;
+  return isPowerOf10(num);
 }
+
 
 // ============= AI Generation Helper =============
 
