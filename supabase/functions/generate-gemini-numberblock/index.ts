@@ -299,6 +299,8 @@ RULES:
         number: number,
         storage_path: storagePath,
         original_url: "gemini-generated",
+        source: "ai",
+        model: "gemini",
       },
       { onConflict: "number" }
     );

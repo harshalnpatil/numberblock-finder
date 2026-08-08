@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyImageBytes } from "../_shared/verify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -268,6 +269,15 @@ Result: one Numberblocks character, black and white line art, coloring page styl
     // DALL-E returns PNG images
     const imageType = "png";
 
+    // Verify before caching: a wrong image cached once is wrong forever.
+    const verification = await verifyImageBytes(bytes, `image/${imageType}`, number);
+    if (!verification.verified && !verification.skipped) {
+      console.log(`AI image for ${number} rejected by verifier: ${verification.note}`);
+      return new Response(
+        JSON.stringify({ success: false, error: `Generated image failed verification (${verification.note})` }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Upload to storage with "ai-" prefix to indicate it's AI-generated
     const paddedNum = number.toString().padStart(3, "0");
@@ -286,15 +296,20 @@ Result: one Numberblocks character, black and white line art, coloring page styl
       });
     }
 
-    // Save cache entry with ai_generated flag in original_url
     await supabase.from("numberblocks_cache").upsert(
       {
         number: number,
         storage_path: storagePath,
         original_url: "ai-generated",
+        source: "ai",
+        model: "openai",
+        verified: verification.verified,
+        verification_note: verification.note,
+        verified_at: new Date().toISOString(),
       },
       { onConflict: "number" },
     );
+
 
     // Return public URL
     const {

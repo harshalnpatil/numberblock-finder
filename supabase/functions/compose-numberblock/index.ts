@@ -209,6 +209,7 @@ Deno.serve(async (req) => {
         number: number,
         storage_path: storagePath,
         original_url: "composed",
+        source: "compose",
       },
       { onConflict: "number" }
     );

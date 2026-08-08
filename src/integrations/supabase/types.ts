@@ -18,23 +18,38 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          model: string | null
           number: number
           original_url: string | null
+          source: string
           storage_path: string
+          verification_note: string | null
+          verified: boolean
+          verified_at: string | null
         }
         Insert: {
           created_at?: string
           id?: string
+          model?: string | null
           number: number
           original_url?: string | null
+          source?: string
           storage_path: string
+          verification_note?: string | null
+          verified?: boolean
+          verified_at?: string | null
         }
         Update: {
           created_at?: string
           id?: string
+          model?: string | null
           number?: number
           original_url?: string | null
+          source?: string
           storage_path?: string
+          verification_note?: string | null
+          verified?: boolean
+          verified_at?: string | null
         }
         Relationships: []
       }
