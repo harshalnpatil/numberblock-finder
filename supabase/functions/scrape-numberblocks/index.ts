@@ -235,6 +235,12 @@ Result: one Numberblocks character, black and white line art, coloring page styl
     // DALL-E returns PNG images
     const imageType = 'png';
 
+    // Verify before caching so a wrong generation is not stored as the answer
+    const verification = await verifyImageBytes(bytes, `image/${imageType}`, number);
+    if (!verification.verified && !verification.skipped) {
+      console.log(`AI image for ${number} rejected by verifier: ${verification.note}`);
+      return { success: false, error: `Generated image failed verification (${verification.note})` };
+    }
 
     const paddedNum = number.toString().padStart(3, '0');
     const storagePath = `ai-${paddedNum}.${imageType}`;
@@ -257,7 +263,13 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         number: number,
         storage_path: storagePath,
         original_url: 'ai-generated',
+        source: 'ai',
+        model: 'openai',
+        verified: verification.verified,
+        verification_note: verification.note,
+        verified_at: new Date().toISOString(),
       }, { onConflict: 'number' });
+
 
     const { data: { publicUrl } } = supabase.storage
       .from('numberblocks-images')
