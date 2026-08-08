@@ -609,12 +609,63 @@ Deno.serve(async (req) => {
   }
 });
 
-async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, supabaseUrl: string): Promise<NumberImage> {
+/**
+ * Ask the wiki itself which page titles actually exist, instead of guessing at
+ * URL shapes. Returns candidate article URLs in preference order.
+ */
+async function resolveWikiPages(num: number): Promise<string[]> {
   const numberWord = numberToWord(num);
-  const pageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}`;
-  
-  console.log(`Scraping: ${pageUrl}`);
-  
+  const candidates = [
+    `${numberWord}_(character)`,
+    numberWord,
+    `${numberWord}_(number)`,
+    `${num}_(character)`,
+    `${num}`,
+  ];
+
+  const api = `https://numberblocks.fandom.com/api.php?action=query&format=json&redirects=1&titles=${
+    encodeURIComponent(candidates.join('|'))
+  }`;
+
+  try {
+    const res = await fetch(api, {
+      headers: { 'User-Agent': 'NumberblockFinder/1.0 (educational app)' },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const pages = json?.query?.pages ?? {};
+      const existing: string[] = [];
+      for (const key of Object.keys(pages)) {
+        const page = pages[key];
+        if (Number(key) > 0 && page?.title && page.missing === undefined) {
+          existing.push(page.title as string);
+        }
+      }
+      if (existing.length > 0) {
+        // Preserve our preference order
+        const rank = (title: string) => {
+          const normalized = title.replace(/ /g, '_');
+          const idx = candidates.indexOf(normalized);
+          return idx === -1 ? 99 : idx;
+        };
+        existing.sort((a, b) => rank(a) - rank(b));
+        return existing.map(
+          (t) => `https://numberblocks.fandom.com/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`,
+        );
+      }
+      console.log(`Wiki has no page for ${num}`);
+      return [];
+    }
+    console.error(`Wiki title lookup failed for ${num}: ${res.status}`);
+  } catch (error) {
+    console.error(`Wiki title lookup error for ${num}:`, error);
+  }
+
+  // Lookup unavailable - fall back to the constructed title so we still try.
+  return [`https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}`];
+}
+
+async function firecrawlHtml(url: string, apiKey: string): Promise<string | null> {
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -622,158 +673,129 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        url: pageUrl,
-        formats: ['html', 'links'],
-        onlyMainContent: false,
-      }),
+      body: JSON.stringify({ url, formats: ['html', 'links'], onlyMainContent: false }),
     });
-
     const data = await response.json();
-
     if (!response.ok) {
-      console.error(`Firecrawl error for ${num}:`, data);
-      return { number: num, imageUrl: null, pageUrl, error: data.error || 'Request failed' };
+      console.error(`Firecrawl error for ${url}:`, data?.error || response.status);
+      return null;
     }
+    return data.data?.html || data.html || '';
+  } catch (error) {
+    console.error(`Firecrawl fetch error for ${url}:`, error);
+    return null;
+  }
+}
 
-    const html = data.data?.html || data.html || '';
-    // Step 1: Try priorities 1-2 only (exact number match + infobox) on main page
-    let originalImageUrl = extractInfoboxImage(html, num, true);
-    let lastHtml = html;
-    
-    // Step 2: If no image found, check disambiguation and retry with _(character) suffix
-    if (!originalImageUrl && isDisambiguationPage(html)) {
-      const charPageUrl = `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}_(character)`;
-      console.log(`Disambiguation page detected for ${num}, retrying: ${charPageUrl}`);
-      
-      const retryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: charPageUrl,
-          formats: ['html', 'links'],
-          onlyMainContent: false,
-        }),
-      });
-      
-      const retryData = await retryResponse.json();
-      if (retryResponse.ok) {
-        const retryHtml = retryData.data?.html || retryData.html || '';
-        lastHtml = retryHtml;
-        originalImageUrl = extractInfoboxImage(retryHtml, num, true);
-      } else {
-        console.error(`Firecrawl retry error for ${num} _(character):`, retryData);
+async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, supabaseUrl: string): Promise<NumberImage> {
+  const numberWord = numberToWord(num);
+  const resolved = await resolveWikiPages(num);
+  const pageUrl = resolved[0] ?? `https://numberblocks.fandom.com/wiki/${encodeURIComponent(numberWord)}`;
+
+  if (resolved.length === 0) {
+    // A real, definitive negative: the wiki simply has no article for this number.
+    return { number: num, imageUrl: null, pageUrl, error: 'No wiki page for this number' };
+  }
+
+  try {
+    let originalImageUrl: string | null = null;
+
+    // Try each real article, then its gallery subpage. Only accept an image
+    // that positively matches the number (exact filename token or infobox
+    // position) - no "first image on the page" guessing, no loose fan-art match.
+    for (const articleUrl of resolved) {
+      console.log(`Scraping: ${articleUrl}`);
+      const html = await firecrawlHtml(articleUrl, apiKey);
+      if (!html) continue;
+      if (isDisambiguationPage(html)) {
+        console.log(`Disambiguation page for ${num}, trying next candidate`);
+        continue;
       }
-    }
-    
-    // Step 3: If still no image, try the Gallery subpage
-    if (!originalImageUrl) {
-      // Determine the base page URL we ended up on (could be base or _(character))
-      const baseWord = encodeURIComponent(numberWord);
-      const galleryUrls = [
-        `https://numberblocks.fandom.com/wiki/${baseWord}_(character)/Gallery`,
-        `https://numberblocks.fandom.com/wiki/${baseWord}/Gallery`,
-      ];
-      
-      for (const galleryUrl of galleryUrls) {
-        console.log(`Trying Gallery page for ${num}: ${galleryUrl}`);
-        try {
-          const galleryResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url: galleryUrl,
-              formats: ['html'],
-              onlyMainContent: false,
-            }),
-          });
-          
-          const galleryData = await galleryResponse.json();
-          if (galleryResponse.ok) {
-            const galleryHtml = galleryData.data?.html || galleryData.html || '';
-            if (galleryHtml.length > 500) {
-              // Extract first valid character image from gallery
-              originalImageUrl = extractFirstGalleryImage(galleryHtml, num);
-              if (originalImageUrl) {
-                console.log(`Found image from Gallery page for ${num}`);
-                break;
-              }
-            }
-          }
-        } catch (err) {
-          console.error(`Gallery scrape error for ${num}:`, err);
+
+      originalImageUrl = extractInfoboxImage(html, num, true) ?? extractInfoboxImageFallback(html, num);
+      if (originalImageUrl) break;
+
+      const galleryHtml = await firecrawlHtml(`${articleUrl}/Gallery`, apiKey);
+      if (galleryHtml && galleryHtml.length > 500) {
+        originalImageUrl = extractInfoboxImageFallback(galleryHtml, num);
+        if (originalImageUrl) {
+          console.log(`Found number-matched gallery image for ${num}`);
+          break;
         }
       }
     }
-    
-    // Step 4: Fall back to Priority 3 (filename contains number word) on original HTML
-    if (!originalImageUrl) {
-      originalImageUrl = extractInfoboxImageFallback(lastHtml, num);
-      if (originalImageUrl) {
-        console.log(`Found image via filename fallback for ${num}`);
-      }
-    }
-    
+
     if (!originalImageUrl) {
       return { number: num, imageUrl: null, pageUrl, error: 'No image found' };
     }
-    
+
     const imageResponse = await fetch(originalImageUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': 'https://numberblocks.fandom.com/',
       },
     });
-    
+
     if (!imageResponse.ok) {
       console.error(`Failed to download image for ${num}: ${imageResponse.status}`);
-      return { number: num, imageUrl: originalImageUrl, pageUrl };
+      return { number: num, imageUrl: null, pageUrl, error: 'Image download failed' };
     }
-    
+
     const contentType = imageResponse.headers.get('content-type') || 'image/png';
-    const imageData = await imageResponse.arrayBuffer();
-    
+    const imageData = new Uint8Array(await imageResponse.arrayBuffer());
+
+    // Verify before caching: a wrong picture cached once is wrong forever.
+    const verification = await verifyImageBytes(imageData, contentType, num);
+    if (!verification.verified && !verification.skipped) {
+      console.log(`Scraped image for ${num} rejected by verifier: ${verification.note}`);
+      return {
+        number: num,
+        imageUrl: null,
+        pageUrl,
+        error: `Wiki image failed verification (${verification.note})`,
+      };
+    }
+
     let extension = 'png';
     if (contentType.includes('jpeg') || contentType.includes('jpg')) extension = 'jpg';
     else if (contentType.includes('gif')) extension = 'gif';
     else if (contentType.includes('webp')) extension = 'webp';
-    
+
     const paddedNum = num.toString().padStart(3, '0');
     const storagePath = `${paddedNum}.${extension}`;
-    
+
     const { error: uploadError } = await supabase.storage
       .from('numberblocks-images')
       .upload(storagePath, imageData, {
         contentType,
         upsert: true,
       });
-    
+
     if (uploadError) {
       console.error(`Failed to cache image ${num}:`, uploadError);
       return { number: num, imageUrl: originalImageUrl, pageUrl };
     }
-    
+
     await supabase
       .from('numberblocks_cache')
       .upsert({
         number: num,
         storage_path: storagePath,
         original_url: originalImageUrl,
+        source: 'wiki',
+        model: null,
+        verified: verification.verified,
+        verification_note: verification.note,
+        verified_at: new Date().toISOString(),
       }, { onConflict: 'number' });
-    
+
     const { data: { publicUrl } } = supabase.storage
       .from('numberblocks-images')
       .getPublicUrl(storagePath);
-    
-    console.log(`Cached image ${num} at ${storagePath}`);
-    
-    return { number: num, imageUrl: publicUrl, pageUrl, cached: true };
+
+    console.log(`Cached image ${num} at ${storagePath} (verified: ${verification.verified})`);
+
+    return { number: num, imageUrl: publicUrl, pageUrl, cached: true, source: 'wiki', verified: verification.verified };
   } catch (error) {
     console.error(`Error processing ${num}:`, error);
     return { 
@@ -784,6 +806,7 @@ async function scrapeAndCacheNumber(num: number, apiKey: string, supabase: any, 
     };
   }
 }
+
 
 function isDisambiguationPage(html: string): boolean {
   const lower = html.toLowerCase();
