@@ -6,6 +6,16 @@ The format is loosely inspired by [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## 2026-08-08
+
+### Image accuracy
+
+- **Trustworthy image cache:** added explicit source/model and verification metadata, backfilled existing entries, and verifies scraped or AI-generated images before caching them. Rejected images now fall through rather than becoming permanent cache hits.
+- **Safer wiki scraper:** resolves real wiki titles, attempts every number through 1,000, caches genuine missing-page results, and removes the unverified gallery-first-image and loose fan-art fallbacks.
+- **Deterministic SVG renderer v2:** renders one dimensional, highlighted cube per unit; groups tens into columns and hundreds into separated 10x10 slabs; and adds a Numberling badge, expressive face, curved arms, hands, legs, and feet. The renderer is exact for 1–1,000 and now rejects larger values instead of silently drawing the wrong count.
+
+---
+
 ## 2026-08-07
 
 ### Fixes
