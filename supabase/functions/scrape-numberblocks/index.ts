@@ -51,7 +51,7 @@ const RATE_LIMITS = {
 };
 
 // Countries that get the strict per-IP threshold (suspected bot/scraper traffic).
-const STRICT_COUNTRIES = new Set(['CN']);
+const STRICT_COUNTRIES = new Set(['CN', 'VN']);
 
 // ============= Smart Scraping Helpers =============
 
@@ -381,6 +381,16 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Early 403 for blocked regions: skip API key checks, Supabase client
+    // creation, and database lookups to save compute and database reads.
+    const country = getCountry(req);
+    if (STRICT_COUNTRIES.has(country)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Service unavailable in your region' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!apiKey) {
       console.error('FIRECRAWL_API_KEY not configured');
@@ -395,7 +405,6 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
-    const country = getCountry(req);
     const body = await req.json();
     const startNumber = body.startNumber ?? 1;
     const endNumber = body.endNumber ?? 20;

@@ -56,6 +56,25 @@ Colour rules: wiki scrape stays full colour; AI and compose stay black-and-white
 ---
 
 
+## Bot Traffic Hardening
+
+**Goal:** Reduce server costs and protect expensive AI-generation endpoints from bot and scraper traffic, based on rules from the PatronView bot-traffic article (Aug 2026).
+
+**Context:** This app gets significant traffic from China and other regions with no real audience. Supabase Edge Functions call OpenAI and Gemini APIs (real cost per request). Existing protection: geo-tiered rate limits already throttle CN IPs to `strictThreshold: 0` on AI generation endpoints, and a `rate_limit_log` table tracks per-IP and global call counts with progressive delays. The `robots.txt` currently allows all crawlers.
+
+**Source:** [99% of My Website Traffic Is Bots](https://patronview.com/news/99-percent-of-my-website-traffic-is-bots/) (PatronView, Aug 2026)
+
+| #   | Task | Priority | Effort | Status | Details |
+| --- | ---- | -------- | ------ | ------ | ------- |
+| BT1 | Add SEO crawler blocks to robots.txt | P1 | S | Not started | Add `Disallow: /` rules for the 12 SEO crawlers from the article: SemrushBot, AhrefsBot, MJ12bot, DotBot, BLEXBot, Barkrowler, DataForSEOBot, SiteAuditBot, AhrefsSiteAudit, SplitSignalBot, ThinkBot, BrightBot. Keep Googlebot, Bingbot, Twitterbot, and facebookexternalhit allowed. These crawlers identify themselves honestly and most respect robots.txt. |
+| BT2 | Add AI crawler blocks to robots.txt | P1 | S | Not started | Add `Disallow: /` for AI crawlers with bad crawl-to-referral ratios: Claude-SearchBot, Amzn-SearchBot, GPTBot, ClaudeBot, CCBot, Bytespider. Cloudflare's managed AI Crawl Control already blocks declared training bots at the edge, but robots.txt provides a second layer and documents intent. |
+| BT3 | Add Vietnam to STRICT_COUNTRIES set | P1 | S | Not started | Extend the existing `STRICT_COUNTRIES` set in all Edge Functions (`generate-numberblock`, `generate-gemini-numberblock`, `scrape-numberblocks`) from `['CN']` to `['CN', 'VN']`. The article documents a copycat Vietnam wave after blocking China. This reuses the existing progressive-delay mechanism with no new code paths. |
+| BT4 | Tighten CN/VN to full 403 on edge functions | P2 | S | Not started | Currently CN IPs get `strictThreshold: 0` (throttled to zero AI calls but still hit the function). Consider returning a direct 403 for CN/VN IPs on AI generation and scrape endpoints before any Supabase lookup, saving database reads and compute. Gate behind an env var so it can be toggled without redeploy. |
+| BT5 | Add per-IP rate limit on frontend page loads | P2 | M | Not started | The existing rate limiting covers Edge Functions only. If a custom domain is added and proxied through Cloudflare, add a Cloudflare WAF rate limit rule: 30 extensionless path requests per 10 seconds per IP, Managed Challenge on exceed. If no custom domain, consider a lightweight Supabase Edge Function middleware that checks `cf-ipcountry` and `cf-connecting-ip` headers. |
+| BT6 | Evaluate Cloudflare WAF for custom domain | P3 | M | Not started | If the app moves to a custom domain (not `*.lovable.app`), add Cloudflare to the DNS path and configure WAF rules: (1) Block CN/VN, (2) Block 12 SEO crawlers by user-agent, (3) Challenge non-NA continents, (4) Challenge empty user-agents, (5) Challenge datacenter ASNs. Lovable's `*.lovable.app` subdomains do not give WAF access. This is a 2-way door (reversible by removing the DNS proxy). |
+
+---
+
 ## Cross-Project Observability & Debugging System
 
 **Goal:** Give AI agents and developers real production debugging context across all side projects.

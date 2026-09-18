@@ -17,7 +17,7 @@ const AI_RATE_LIMITS = {
 
 // Countries that get the strict per-IP threshold. Mostly used to throttle
 // regions where we have no real audience but see suspected bot/scraper traffic.
-const STRICT_COUNTRIES = new Set(['CN']);
+const STRICT_COUNTRIES = new Set(['CN', 'VN']);
 
 function getClientIP(req: Request): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
@@ -91,6 +91,16 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Early 403 for blocked regions: skip API key checks, Supabase client
+    // creation, and database lookups to save compute and database reads.
+    const country = getCountry(req);
+    if (STRICT_COUNTRIES.has(country)) {
+      return new Response(JSON.stringify({ success: false, error: "Service unavailable in your region" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       return new Response(JSON.stringify({ success: false, error: "OPENAI_API_KEY is not configured" }), {
@@ -104,7 +114,6 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const clientIP = getClientIP(req);
-    const country = getCountry(req);
     const { number, force } = await req.json();
 
     if (!number || typeof number !== "number") {
