@@ -6,6 +6,11 @@ The format is loosely inspired by [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## 2026-10-17 - Agent setup and verification
+
+- Added explicit frontend/config typecheck and documented locked npm setup separately from Vite bundling.
+- Verification: typecheck passed.
+
 ## 2026-08-08
 
 ### Image accuracy

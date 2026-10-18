@@ -17,7 +17,7 @@ Optional: [Bun](https://bun.sh/) if you prefer `bun install` / `bun run` (this r
 
 ```powershell
 cd numberblock-finder
-npm install
+npm ci
 ```
 
 ### Environment
@@ -52,3 +52,9 @@ npx playwright install chromium
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later). See [LICENSE](LICENSE).
+
+## Local type verification
+
+Run `npm run typecheck` from this repository root before handing off TypeScript changes. It checks the existing application and build configuration without emitting JavaScript. `npm run build` bundles with Vite and does not perform this type check.
+
+Use `npm ci` for repeatable setup with the committed npm lockfile. This replaces the current checkout's dependency directory; run it inside the intended worktree.
