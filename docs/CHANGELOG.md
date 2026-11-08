@@ -6,6 +6,10 @@ The format is loosely inspired by [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## 2026-11-07 - Backlog ownership consolidation
+
+- Kept docs/product_backlog.md as the single task backlog, as named by the project instructions and README. Removed the duplicate docs/backlog.md after confirming it contained no unique lines or task IDs.
+
 ## 2026-10-17 - Agent setup and verification
 
 - Added explicit frontend/config typecheck and documented locked npm setup separately from Vite bundling.
