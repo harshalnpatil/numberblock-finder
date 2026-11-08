@@ -11,7 +11,7 @@ export interface VerificationResult {
   skipped?: boolean;
 }
 
-const VISION_MODEL = "gpt-4o-mini";
+const VISION_MODEL = "gpt-6-luna";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -61,7 +61,8 @@ async function callVision(
         },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 200,
+      reasoning_effort: "high",
+      max_completion_tokens: 8000,
     }),
   });
 
