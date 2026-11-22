@@ -219,9 +219,9 @@ Result: one Numberblocks character, black and white line art, coloring page styl
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // dall-e-3 has been retired by OpenAI; gpt-image-1-mini is the
-        // current cost-efficient image model on the same endpoint.
-        model: "gpt-image-1-mini",
+        // gpt-image-1-mini shuts down Dec 1, 2026; gpt-image-2.6-flare is
+        // the current image model on the same endpoint.
+        model: "gpt-image-2.6-flare",
         prompt,
         n: 1,
         size: "1024x1024",
