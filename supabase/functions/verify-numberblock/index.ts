@@ -1,3 +1,4 @@
+import { getRequestCountry, countryBlockResponse } from "../_shared/country-block.ts";
 import { verifyImageUrl } from "../_shared/verify.ts";
 
 const corsHeaders = {
@@ -10,6 +11,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const blocked = countryBlockResponse(getRequestCountry(req), corsHeaders);
+  if (blocked) return blocked;
 
   try {
     const { number, imageUrl } = await req.json();

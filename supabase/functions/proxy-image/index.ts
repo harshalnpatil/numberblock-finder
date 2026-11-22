@@ -1,3 +1,4 @@
+import { getRequestCountry, countryBlockResponse } from '../_shared/country-block.ts';
 // Allowed origins that can call this endpoint
 const ALLOWED_ORIGINS = [
   'https://numberblock-finder.lovable.app',
@@ -62,6 +63,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const blocked = countryBlockResponse(getRequestCountry(req), corsHeaders);
+  if (blocked) return blocked;
 
   try {
     // Validate origin

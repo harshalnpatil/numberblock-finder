@@ -1,3 +1,4 @@
+import { getRequestCountry, countryBlockResponse } from "../_shared/country-block.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -9,13 +10,10 @@ const corsHeaders = {
 // ============= Shared Rate Limiting (same bucket as OpenAI) =============
 
 const AI_RATE_LIMITS = {
-  perIp: { threshold: 10, strictThreshold: 0, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
+  perIp: { threshold: 10, windowMs: 10 * 60 * 1000, delayPerExcess: 15000 },
   global: { threshold: 50, windowMs: 10 * 60 * 1000, delayPerExcess: 10000 },
   maxDelay: 60000,
 };
-
-// Countries that get the strict per-IP threshold (suspected bot/scraper traffic).
-const STRICT_COUNTRIES = new Set(['CN', 'VN']);
 
 function getClientIP(req: Request): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -24,23 +22,10 @@ function getClientIP(req: Request): string {
     || 'unknown';
 }
 
-function getCountry(req: Request): string {
-  return (req.headers.get('cf-ipcountry')
-    || req.headers.get('x-country-code')
-    || req.headers.get('x-vercel-ip-country')
-    || 'unknown').toUpperCase();
-}
-
-function getPerIpThreshold(country: string): number {
-  return STRICT_COUNTRIES.has(country)
-    ? AI_RATE_LIMITS.perIp.strictThreshold
-    : AI_RATE_LIMITS.perIp.threshold;
-}
-
-async function checkAIRateLimits(supabase: any, ip: string, country: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
+async function checkAIRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - AI_RATE_LIMITS.perIp.windowMs);
-  const perIpThreshold = getPerIpThreshold(country);
+  const perIpThreshold = AI_RATE_LIMITS.perIp.threshold;
 
   // Use same endpoint key 'generate-numberblock' so OpenAI + Gemini share one budget
   const { data: ipCalls } = await supabase
@@ -157,17 +142,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    // Early 403 for blocked regions: skip API key checks, Supabase client
-    // creation, and database lookups to save compute and database reads.
-    const country = getCountry(req);
-    if (STRICT_COUNTRIES.has(country)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Service unavailable in your region" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+  const country = getRequestCountry(req);
+  const blocked = countryBlockResponse(country, corsHeaders, { alsoBlockVietnam: true });
+  if (blocked) return blocked;
 
+  try {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
       return new Response(
@@ -191,7 +170,7 @@ Deno.serve(async (req) => {
     }
 
     // Check shared rate limits (same bucket as OpenAI)
-    const { delay, ipTotal, globalTotal, perIpThreshold } = await checkAIRateLimits(supabase, clientIP, country);
+    const { delay, ipTotal, globalTotal, perIpThreshold } = await checkAIRateLimits(supabase, clientIP);
 
     if (delay > 0) {
       console.log(`Gemini rate limited: IP=${clientIP}, country=${country}, ipTotal=${ipTotal}/${perIpThreshold}, globalTotal=${globalTotal}, delay=${delay}ms`);

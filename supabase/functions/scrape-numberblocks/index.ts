@@ -1,3 +1,4 @@
+import { getRequestCountry, countryBlockResponse } from '../_shared/country-block.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { verifyImageBytes } from '../_shared/verify.ts';
 
@@ -38,7 +39,6 @@ interface CacheEntry {
 const RATE_LIMITS = {
   perIp: {
     threshold: 20,
-    strictThreshold: 0,
     windowMs: 5 * 60 * 1000,
     delayPerExcess: 10000,
   },
@@ -49,9 +49,6 @@ const RATE_LIMITS = {
   },
   maxDelay: 60000,
 };
-
-// Countries that get the strict per-IP threshold (suspected bot/scraper traffic).
-const STRICT_COUNTRIES = new Set(['CN', 'VN']);
 
 // ============= Smart Scraping Helpers =============
 
@@ -296,22 +293,9 @@ function getClientIP(req: Request): string {
     || 'unknown';
 }
 
-function getCountry(req: Request): string {
-  return (req.headers.get('cf-ipcountry')
-    || req.headers.get('x-country-code')
-    || req.headers.get('x-vercel-ip-country')
-    || 'unknown').toUpperCase();
-}
-
-function getPerIpThreshold(country: string): number {
-  return STRICT_COUNTRIES.has(country)
-    ? RATE_LIMITS.perIp.strictThreshold
-    : RATE_LIMITS.perIp.threshold;
-}
-
-async function checkRateLimits(supabase: any, ip: string, country: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
+async function checkRateLimits(supabase: any, ip: string): Promise<{ delay: number; ipTotal: number; globalTotal: number; perIpThreshold: number }> {
   const now = new Date();
-  const perIpThreshold = getPerIpThreshold(country);
+  const perIpThreshold = RATE_LIMITS.perIp.threshold;
   
   const ipWindowStart = new Date(now.getTime() - RATE_LIMITS.perIp.windowMs);
   const { data: ipCalls } = await supabase
@@ -380,17 +364,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    // Early 403 for blocked regions: skip API key checks, Supabase client
-    // creation, and database lookups to save compute and database reads.
-    const country = getCountry(req);
-    if (STRICT_COUNTRIES.has(country)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Service unavailable in your region' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  const country = getRequestCountry(req);
+  const blocked = countryBlockResponse(country, corsHeaders, { alsoBlockVietnam: true });
+  if (blocked) return blocked;
 
+  try {
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!apiKey) {
       console.error('FIRECRAWL_API_KEY not configured');
@@ -520,7 +498,7 @@ Deno.serve(async (req) => {
     
     // Only check rate limits if we need to make API calls
     if (numbersToScrape.length > 0) {
-      const { delay, ipTotal, globalTotal, perIpThreshold } = await checkRateLimits(supabase, clientIP, country);
+      const { delay, ipTotal, globalTotal, perIpThreshold } = await checkRateLimits(supabase, clientIP);
       
       if (delay > 0) {
         wasThrottled = true;
