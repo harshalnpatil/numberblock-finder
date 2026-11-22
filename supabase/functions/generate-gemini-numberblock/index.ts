@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
   }
 
   const country = getRequestCountry(req);
-  const blocked = countryBlockResponse(country, corsHeaders, { alsoBlockVietnam: true });
+  const blocked = countryBlockResponse(country, corsHeaders);
   if (blocked) return blocked;
 
   try {

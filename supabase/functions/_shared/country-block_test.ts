@@ -4,8 +4,8 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("China and Russia return a non-cacheable CORS 403", async () => {
-  for (const country of ["cn", " RU "]) {
+Deno.test("China, Russia, and Vietnam return a non-cacheable CORS 403", async () => {
+  for (const country of ["cn", " RU ", "VN"]) {
     const request = new Request("https://example.test", {
       headers: { "cf-ipcountry": country, "x-country-code": "IE" },
     });
@@ -27,17 +27,6 @@ Deno.test("China and Russia return a non-cacheable CORS 403", async () => {
       "403 body is missing the error result",
     );
   }
-});
-
-Deno.test("Vietnam remains blocked on the original routes only", () => {
-  assert(
-    countryBlockResponse("VN", {}) === undefined,
-    "Vietnam was blocked on a new route",
-  );
-  assert(
-    countryBlockResponse("VN", {}, { alsoBlockVietnam: true })?.status === 403,
-    "Vietnam was unblocked on an original route",
-  );
 });
 
 Deno.test("Allowed and unknown countries pass without trusting fallback headers", () => {

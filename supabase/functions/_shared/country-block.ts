@@ -6,12 +6,8 @@ export function getRequestCountry(request: Request): string {
 export function countryBlockResponse(
   country: string,
   corsHeaders: HeadersInit,
-  { alsoBlockVietnam = false }: { alsoBlockVietnam?: boolean } = {},
 ): Response | undefined {
-  if (
-    country !== "CN" && country !== "RU" &&
-    !(alsoBlockVietnam && country === "VN")
-  ) {
+  if (country !== "CN" && country !== "RU" && country !== "VN") {
     return;
   }
 
